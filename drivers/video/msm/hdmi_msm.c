@@ -2596,12 +2596,6 @@ static int hdcp_authentication_part1(void)
 			goto error;
 		}
 
-		/*
-		 * A small delay is needed here to avoid device crash observed
-		 * during reauthentication in MSM8960
-		 */
-		msleep(20);
-
 #ifdef CONFIG_MACH_LGE
 /* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
  * 2012-04-13, jongyeol.yang@lge.com
