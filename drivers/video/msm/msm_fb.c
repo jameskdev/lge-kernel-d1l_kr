@@ -1370,6 +1370,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		snprintf(fix->id, sizeof(fix->id), "msmfb44_%x", (__u32) *id);
 		break;
 	default:
+		snprintf(fix->id, sizeof(fix->id), "msmfb0_%x", (__u32) *id);
 		break;
 	}
 
