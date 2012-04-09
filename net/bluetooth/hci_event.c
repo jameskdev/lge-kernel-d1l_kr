@@ -2791,22 +2791,15 @@ static inline void hci_remote_ext_features_evt(struct hci_dev *hdev, struct sk_b
 		conn->ssp_mode = (ev->features[0] & 0x01);
 		/*In case if remote device ssp supported/2.0 device
 		reduce the security level to MEDIUM if it is HIGH*/
-// *s QCT_BT_COMMON_PATCH_SBA1044
 		if (!conn->ssp_mode && conn->auth_initiator &&
-    /* QCT Original
-		if (!conn->ssp_mode &&
-    */
-// *e QCT_BT_COMMON_PATCH_SBA1044
 			(conn->pending_sec_level == BT_SECURITY_HIGH))
 			conn->pending_sec_level = BT_SECURITY_MEDIUM;
 
-//+s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
 		if (conn->ssp_mode && conn->auth_initiator &&
 			conn->io_capability != 0x03) {
 			conn->pending_sec_level = BT_SECURITY_HIGH;
 			conn->auth_type = HCI_AT_DEDICATED_BONDING_MITM;
 		}
-//+e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
 	}
 
 	if (conn->state != BT_CONFIG)

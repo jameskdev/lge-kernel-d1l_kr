@@ -1634,26 +1634,9 @@ static int pair_device(struct sock *sk, u16 index, unsigned char *data, u16 len)
 	hci_dev_lock_bh(hdev);
 
 	io_cap = cp->io_cap;
-// *s QCT_BT_COMMON_PATCH_SBA1044
-//-s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
-    /* QCT Original
-	if (io_cap == 0x03) {
-	*/
-//-e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
-    /* QCT Original
-	if ((cp->ssp_cap == 0) || (io_cap == 0x03)) {
-    */
-// *e QCT_BT_COMMON_PATCH_SBA1044
-		sec_level = BT_SECURITY_MEDIUM;
-		auth_type = HCI_AT_DEDICATED_BONDING;
-//-s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
-    /* QCT Original
-	} else {
-		sec_level = BT_SECURITY_HIGH;
-		auth_type = HCI_AT_DEDICATED_BONDING_MITM;
-	}
-	*/
-//-e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
+
+	sec_level = BT_SECURITY_MEDIUM;
+	auth_type = HCI_AT_DEDICATED_BONDING;
 
 	entry = hci_find_adv_entry(hdev, &cp->bdaddr);
 	if (entry && entry->flags & 0x04) {
