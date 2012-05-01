@@ -141,6 +141,9 @@ struct msm_sensor_fn_t {
 	int32_t (*sensor_set_brightness) (struct msm_sensor_ctrl_t *, uint8_t);
 #endif
 /* LGE_CHANGE_E, Implementation of SoC Sensor features for v4l2 system, 2012.02.02, yongjin1.kim@lge.com */
+	int32_t (*sensor_match_id)(struct msm_sensor_ctrl_t *s_ctrl);
+	int (*sensor_adjust_frame_lines)
+		(struct msm_sensor_ctrl_t *s_ctrl, uint16_t res);
 };
 
 struct msm_sensor_ctrl_t {
@@ -229,6 +232,9 @@ int msm_sensor_write_res_settings
 	(struct msm_sensor_ctrl_t *s_ctrl, uint16_t res);
 
 int32_t msm_sensor_write_output_settings(struct msm_sensor_ctrl_t *s_ctrl,
+	uint16_t res);
+
+int32_t msm_sensor_adjust_frame_lines(struct msm_sensor_ctrl_t *s_ctrl,
 	uint16_t res);
 
 int32_t msm_sensor_setting(struct msm_sensor_ctrl_t *s_ctrl,
