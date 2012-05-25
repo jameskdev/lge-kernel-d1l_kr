@@ -176,6 +176,7 @@ static int msm_csiphy_init(struct v4l2_subdev *sd)
 
 	if (rc < 0) {
 		iounmap(csiphy_dev->base);
+		csiphy_dev->base = NULL;
 		return rc;
 	}
 
@@ -206,6 +207,7 @@ static int msm_csiphy_release(struct v4l2_subdev *sd)
 		csiphy_dev->csiphy_clk, ARRAY_SIZE(csiphy_clk_info), 0);
 
 	iounmap(csiphy_dev->base);
+	csiphy_dev->base = NULL;
 	return 0;
 }
 
