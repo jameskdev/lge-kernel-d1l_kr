@@ -3174,6 +3174,9 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		return 0;
 	}
 
+	if (pipe->mixer_num == MDP4_MIXER2 || ctrl->panel_mode & MDP4_PANEL_MDDI)
+		mutex_lock(&mfd->dma->ov_mutex);
+
 	img = &req->data;
 	get_img(img, info, pipe, 0, &start, &len, &srcp0_file,
 		&ps0_need, &srcp0_ihdl);
@@ -3301,7 +3304,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		mdp4_overlay1_update_blt_mode(mfd);
 #endif
 
-	if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+	if (pipe->mixer_num == MDP4_MIXER2 || ctrl->panel_mode & MDP4_PANEL_MDDI)
 		goto mddi;
 
 	if (pipe->mixer_num == MDP4_MIXER0) {
@@ -3328,30 +3331,26 @@ mddi:
 	if (pipe->pipe_type == OVERLAY_TYPE_VIDEO) {
 		mdp4_overlay_vg_setup(pipe);    /* video/graphic pipe */
 	} else {
-		if (pipe->flags & MDP_SHARPENING) {
-/* Disable printing log temporarily
- * 2012-02-02, jongyeol.yang@lge.com
- * start
-			pr_debug(
-			"%s: Sharpening/Smoothing not supported on RGB pipe\n",
-						__func__);
- * end
- */
-			pipe->flags &= ~MDP_SHARPENING;
-		}
-		mdp4_overlay_rgb_setup(pipe);   /* rgb pipe */
+		mdp4_overlay_rgb_setup(pipe);	/* rgb pipe */
 	}
+
 	mdp4_mixer_stage_up(pipe);
-	if (!(pipe->flags & MDP_OV_PLAY_NOWAIT))
+
+	if (pipe->mixer_num == MDP4_MIXER2) {
+		ctrl->mixer2_played++;
+#ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
+		if (ctrl->panel_mode & MDP4_PANEL_WRITEBACK) {
+			mdp4_writeback_dma_busy_wait(mfd);
+			mdp4_writeback_kickoff_video(mfd, pipe);
+		}
+#endif
+	} else if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
+		if (pipe->flags & MDP_OV_PLAY_NOWAIT) {
+			mdp4_stat.overlay_play[pipe->mixer_num]++;
+			mutex_unlock(&mfd->dma->ov_mutex);
+			goto end;
+		}
 		mdp4_mixer_stage_commit(pipe->mixer_num);
-
-	if (pipe->flags & MDP_OV_PLAY_NOWAIT) {
-		mdp4_stat.overlay_play[pipe->mixer_num]++;
-		mutex_unlock(&mfd->dma->ov_mutex);
-		goto end;
-	}
-
-	if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 		mdp4_mddi_dma_busy_wait(mfd);
 		mdp4_mddi_kickoff_video(mfd, pipe);
 	}
