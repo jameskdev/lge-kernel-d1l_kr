@@ -82,6 +82,7 @@ static struct vsycn_ctrl {
 	int dmae_wait_cnt;
 	int wait_vsync_cnt;
 	int blt_change;
+	int fake_vsync;
 	struct mutex update_lock;
 	struct completion ov_comp;
 	struct completion dmae_comp;
@@ -220,7 +221,7 @@ int mdp4_dtv_pipe_commit(void)
 
 	pipe = vctrl->base_pipe;
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
-	if (pipe->blt_addr) {
+	if (pipe->ov_blt_addr) {
 		mdp4_dtv_blt_ov_update(pipe);
 		pipe->blt_ov_done++;
 		vsync_irq_enable(INTR_OVERLAY1_DONE, MDP_OVERLAY1_TERM);
@@ -250,6 +251,11 @@ void mdp4_dtv_vsync_ctrl(int cndx, int enable)
 	}
 
 	vctrl = &vsync_ctrl_db[cndx];
+
+	if (vctrl->fake_vsync) {
+		vctrl->fake_vsync = 0;
+		schedule_work(&vctrl->vsync_work);
+	}
 
 	if (vctrl->vsync_irq_enabled == enable)
 		return;
@@ -539,6 +545,7 @@ int mdp4_dtv_on(struct platform_device *pdev)
 		return -EINVAL;
 
 	vctrl->dev = mfd->fbi->dev;
+	vctrl->fake_vsync = 1;
 
 	mdp_footswitch_ctrl(TRUE);
 	/* Mdp clock enable */
@@ -604,8 +611,8 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
 
 	ret = panel_next_off(pdev);
-	mdp4_iommu_detach();
 	mdp_footswitch_ctrl(FALSE);
+	vctrl->fake_vsync = 1;
 
 	/* Mdp clock disable */
 	mdp_clk_ctrl(0);
@@ -620,7 +627,7 @@ static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe)
 	int bpp;
 	char *overlay_base;
 
-	if (pipe->blt_addr == 0)
+	if (pipe->ov_blt_addr == 0)
 		return;
 
 #ifdef BLT_RGB565
@@ -631,7 +638,7 @@ static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe)
 	off = 0;
 	if (pipe->blt_ov_done & 0x01)
 		off = pipe->src_height * pipe->src_width * bpp;
-	addr = pipe->blt_addr + off;
+	addr = pipe->ov_blt_addr + off;
 
 	/* overlay 1 */
 	overlay_base = MDP_BASE + MDP4_OVERLAYPROC1_BASE;/* 0x10000 */
@@ -644,7 +651,7 @@ static void mdp4_dtv_blt_dmae_update(struct mdp4_overlay_pipe *pipe)
 	uint32 off, addr;
 	int bpp;
 
-	if (pipe->blt_addr == 0)
+	if (pipe->ov_blt_addr == 0)
 		return;
 
 #ifdef BLT_RGB565
@@ -655,7 +662,7 @@ static void mdp4_dtv_blt_dmae_update(struct mdp4_overlay_pipe *pipe)
 	off = 0;
 	if (pipe->blt_dmap_done & 0x01)
 		off = pipe->src_height * pipe->src_width * bpp;
-	addr = pipe->blt_addr + off;
+	addr = pipe->dma_blt_addr + off;
 
 	/* dmae */
 	MDP_OUTP(MDP_BASE + 0xb0008, addr);
@@ -719,6 +726,8 @@ static void mdp4_overlay_dtv_alloc_pipe(struct msm_fb_data_type *mfd,
 	pipe->src_w = fbi->var.xres;
 	pipe->src_y = 0;
 	pipe->src_x = 0;
+	pipe->dst_h = fbi->var.yres;
+	pipe->dst_w = fbi->var.xres;
 	pipe->srcp0_ystride = fbi->fix.line_length;
 
 	ret = mdp4_overlay_format2pipe(pipe);
@@ -768,7 +777,8 @@ int mdp4_overlay_dtv_set(struct msm_fb_data_type *mfd,
 		return -ENODEV;
 
 	mdp4_init_writeback_buf(mfd, MDP4_MIXER1);
-	vctrl->base_pipe->blt_addr = 0;
+	vctrl->base_pipe->ov_blt_addr = 0;
+	vctrl->base_pipe->dma_blt_addr = 0;
 
 	return mdp4_dtv_start(mfd);
 }
@@ -835,7 +845,7 @@ void mdp4_dmae_done_dtv(void)
 
 	spin_lock(&vctrl->spin_lock);
 	if (vctrl->blt_change) {
-		if (pipe->blt_addr) {
+		if (pipe->ov_blt_addr) {
 			mdp4_overlayproc_cfg(pipe);
 			mdp4_overlay_dmae_xy(pipe);
 			mdp4_dtv_blt_ov_update(pipe);
@@ -874,7 +884,7 @@ void mdp4_overlay1_done_dtv(void)
 	pipe = vctrl->base_pipe;
 
 	spin_lock(&vctrl->spin_lock);
-	if (pipe->blt_addr == 0) {
+	if (pipe->ov_blt_addr == 0) {
 		spin_unlock(&vctrl->spin_lock);
 		return;
 	}
@@ -929,14 +939,15 @@ static void mdp4_dtv_do_blt(struct msm_fb_data_type *mfd, int enable)
 
 	mdp4_allocate_writeback_buf(mfd, MDP4_MIXER1);
 
-	if (!mfd->ov1_wb_buf->phys_addr) {
+	if (!mfd->ov1_wb_buf->write_addr) {
 		pr_info("%s: ctrl=%d blt_base NOT assigned\n", __func__, cndx);
 		return;
 	}
 
 	spin_lock_irqsave(&vctrl->spin_lock, flag);
-	if (enable && pipe->blt_addr == 0) {
-		pipe->blt_addr = mfd->ov1_wb_buf->phys_addr;
+	if (enable && pipe->ov_blt_addr == 0) {
+		pipe->ov_blt_addr = mfd->ov1_wb_buf->write_addr;
+		pipe->dma_blt_addr = mfd->ov1_wb_buf->read_addr;
 		pipe->blt_cnt = 0;
 		pipe->ov_cnt = 0;
 		pipe->blt_dmap_done = 0;
@@ -944,13 +955,14 @@ static void mdp4_dtv_do_blt(struct msm_fb_data_type *mfd, int enable)
 		pipe->blt_ov_done = 0;
 		mdp4_stat.blt_dtv++;
 		vctrl->blt_change++;
-	} else if (enable == 0 && pipe->blt_addr) {
-		pipe->blt_addr = 0;
+	} else if (enable == 0 && pipe->ov_blt_addr) {
+		pipe->ov_blt_addr = 0;
+		pipe->dma_blt_addr = 0;
 		vctrl->blt_change++;
 	}
 
 	pr_info("%s: enable=%d change=%d blt_addr=%x\n", __func__,
-		enable, vctrl->blt_change, (int)pipe->blt_addr);
+		enable, vctrl->blt_change, (int)pipe->ov_blt_addr);
 
 	if (!vctrl->blt_change) {
 		spin_unlock_irqrestore(&vctrl->spin_lock, flag);
@@ -965,7 +977,7 @@ static void mdp4_dtv_do_blt(struct msm_fb_data_type *mfd, int enable)
 	if (data)       /* timing generator enabled */
 		mdp4_dtv_wait4dmae(0);
 
-	if (pipe->blt_addr == 0) {
+	if (pipe->ov_blt_addr == 0) {
 		MDP_OUTP(MDP_BASE + DTV_BASE, 0);       /* stop dtv */
 		msleep(20);
 		mdp4_overlayproc_cfg(pipe);
