@@ -64,7 +64,7 @@ struct hdmi_msm_state_type {
 	struct timer_list hpd_state_timer;
 	struct completion ddc_sw_done;
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+	bool hdcp_enable;
 	boolean hdcp_activating;
 	boolean reauth ;
 	struct work_struct hdcp_reauth_work, hdcp_work;
@@ -74,7 +74,6 @@ struct hdmi_msm_state_type {
 	struct completion hdcp_activation_done;
 #endif
 	struct timer_list hdcp_timer;
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 	boolean cec_enabled;
