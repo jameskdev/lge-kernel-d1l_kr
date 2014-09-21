@@ -207,6 +207,7 @@ struct msm_camera_csi2_params {
 #define VFE31_OUTPUT_MODE_P_ALL_CHNLS (0x1 << 5)
 
 #define CSI_EMBED_DATA 0x12
+#define CSI_RESERVED_DATA   0x13	//qct patch, fix_unmapped_error, 2012-04-17, freeso.kim
 #define CSI_YUV422_8  0x1E
 #define CSI_RAW8    0x2A
 #define CSI_RAW10   0x2B

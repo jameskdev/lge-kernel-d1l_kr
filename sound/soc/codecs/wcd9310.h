@@ -155,23 +155,50 @@ struct tabla_mbhc_imped_detect_cfg {
 	u16 _beta[3];
 } __packed;
 
+
+struct anc_header {
+	u32 reserved[3];
+	u32 num_anc_slots;
+};
+#ifdef CONFIG_SWITCH_FSA8008
+enum tabla_mclk_bg_state {
+        MCLK_OFF_BANDGAP_OFF = 0,
+        MCLK_ON_BANDGAP_ON = 1,
+        MCLK_OF_BANDGAP_ON,
+        };
+
+extern int tabla_mclk_enable(struct snd_soc_codec *codec,
+        enum tabla_mclk_bg_state);
+#else
+extern int tabla_mclk_enable(struct snd_soc_codec *codec, int mclk_enable);
+#endif
+
+#ifdef CONFIG_LGE_AUDIO
+extern void tabla_codec_enable_micbias2(struct snd_soc_codec *codec);
+#endif
+
+extern void *tabla_mbhc_cal_btn_det_mp(const struct tabla_mbhc_btn_detect_cfg
+				       *btn_det,
+				       const enum tabla_mbhc_btn_det_mem mem);
+#ifdef CONFIG_SWITCH_FSA8008
+extern void tabla_register_mclk_call_back(struct snd_soc_codec *codec,
+    int (*mclk_cb_fn) (struct snd_soc_codec*, enum tabla_mclk_bg_state));
+
+
+extern int tabla_hs_detect(struct snd_soc_codec *codec,
+    struct snd_soc_jack *headset_jack,
+    struct snd_soc_jack *button_jack,
+    void *calibration, enum tabla_micbias_num micbis,
+    int (*mclk_cb_fn) (struct snd_soc_codec*, enum tabla_mclk_bg_state),
+    int read_fw_bin, u32 mclk_rate);
+#else
 extern int tabla_hs_detect(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *headset_jack,
 			   struct snd_soc_jack *button_jack,
 			   void *calibration, enum tabla_micbias_num micbis,
 			   int (*mclk_cb_fn) (struct snd_soc_codec*, int),
 			   int read_fw_bin, u32 mclk_rate);
-
-struct anc_header {
-	u32 reserved[3];
-	u32 num_anc_slots;
-};
-
-extern int tabla_mclk_enable(struct snd_soc_codec *codec, int mclk_enable);
-
-extern void *tabla_mbhc_cal_btn_det_mp(const struct tabla_mbhc_btn_detect_cfg
-				       *btn_det,
-				       const enum tabla_mbhc_btn_det_mem mem);
+#endif
 
 #define TABLA_MBHC_CAL_SIZE(buttons, rload) ( \
 	sizeof(enum tabla_micbias_num) + \
@@ -227,5 +254,13 @@ extern void *tabla_mbhc_cal_btn_det_mp(const struct tabla_mbhc_btn_detect_cfg
 	    sizeof(struct tabla_mbhc_imped_detect_cfg) + \
 	    (cfg_ptr->_n_rload * (sizeof(cfg_ptr->_rload[0]) + \
 				 sizeof(cfg_ptr->_alpha[0]))))
+#ifdef CONFIG_SWITCH_FSA8008
+/*
+* 2012-02-06, mint.choi@lge.com
+* Enable/disable fsa8008 mic bias when inserting and removing
+* this API called by fsa8008 driver
+*/
+extern void tabla_codec_micbias2_ctl(int enable);
+#endif
 
 

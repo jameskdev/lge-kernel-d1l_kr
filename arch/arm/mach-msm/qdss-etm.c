@@ -1299,11 +1299,46 @@ static int etm_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_LGE_ETB_SUSPEND
+static int old_etm_enabled = 0;
+
+static int etm_suspend(struct device *dev)
+{
+	if (etm.enabled) {
+		etm_disable();
+		old_etm_enabled = 1;
+		pr_info("%s: tracing disabled\n", __func__);
+	} else {
+		old_etm_enabled = 0;
+	}
+
+	return 0;
+}
+
+static int etm_resume(struct device *dev)
+{
+	if (old_etm_enabled && !etm.enabled) {
+		etm_enable();
+		pr_info("%s: tracing enabled\n", __func__);
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops etm_dev_pm_ops = {
+	.suspend = etm_suspend,
+	.resume = etm_resume,
+};
+#endif
+
 static struct platform_driver etm_driver = {
 	.probe          = etm_probe,
 	.remove         = etm_remove,
 	.driver         = {
 		.name   = "msm_etm",
+#ifdef CONFIG_LGE_ETB_SUSPEND
+		.pm     = &etm_dev_pm_ops,
+#endif
 	},
 };
 

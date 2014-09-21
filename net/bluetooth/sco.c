@@ -62,7 +62,12 @@ static struct bt_sock_list sco_sk_list = {
 static void __sco_chan_add(struct sco_conn *conn, struct sock *sk, struct sock *parent);
 static void sco_chan_del(struct sock *sk, int err);
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static int  sco_conn_del(struct hci_conn *conn, int err, u8 is_process);
+    /* QCT Original
+static int  sco_conn_del(struct hci_conn *conn, int err);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 
 static void sco_sock_close(struct sock *sk);
 static void sco_sock_kill(struct sock *sk);
@@ -135,7 +140,12 @@ static inline struct sock *sco_chan_get(struct sco_conn *conn)
 	return sk;
 }
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static int sco_conn_del(struct hci_conn *hcon, int err, u8 is_process)
+    /* QCT Original
+static int sco_conn_del(struct hci_conn *hcon, int err)
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 {
 	struct sco_conn *conn = hcon->sco_data;
 	struct sock *sk;
@@ -148,15 +158,19 @@ static int sco_conn_del(struct hci_conn *hcon, int err, u8 is_process)
 	/* Kill socket */
 	sk = sco_chan_get(conn);
 	if (sk) {
+// +s QCT_BT_COMMON_PATCH_SBA1044
 		if (is_process)
 			lock_sock(sk);
 		else
+// +e QCT_BT_COMMON_PATCH_SBA1044
 			bh_lock_sock(sk);
 		sco_sock_clear_timer(sk);
 		sco_chan_del(sk, err);
+// +s QCT_BT_COMMON_PATCH_SBA1044
 		if (is_process)
 			release_sock(sk);
 		else
+// +e QCT_BT_COMMON_PATCH_SBA1044
 			bh_unlock_sock(sk);
 		sco_sock_kill(sk);
 	}
@@ -958,19 +972,34 @@ static int sco_connect_cfm(struct hci_conn *hcon, __u8 status)
 		if (conn)
 			sco_conn_ready(conn);
 	} else
+// *s QCT_BT_COMMON_PATCH_SBA1044
 		sco_conn_del(hcon, bt_err(status), 0);
+    /* QCT Original
+		sco_conn_del(hcon, bt_err(status));
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 
 	return 0;
 }
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static int sco_disconn_cfm(struct hci_conn *hcon, __u8 reason, __u8 is_process)
+    /* QCT Original
+static int sco_disconn_cfm(struct hci_conn *hcon, __u8 reason)
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 {
 	BT_DBG("hcon %p reason %d", hcon, reason);
 
 	if (hcon->type != SCO_LINK && hcon->type != ESCO_LINK)
 		return -EINVAL;
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 	sco_conn_del(hcon, bt_err(reason), is_process);
+    /* QCT Original
+	sco_conn_del(hcon, bt_err(reason));
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 
 	return 0;
 }

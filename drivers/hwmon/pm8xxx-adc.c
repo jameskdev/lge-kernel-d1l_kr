@@ -142,9 +142,13 @@ struct pm8xxx_adc {
 	uint32_t				mpp_base;
 	struct device				*hwmon;
 	struct wake_lock			adc_wakelock;
+#ifdef CONFIG_LGE_PM
+	/* 120422 mansu.lee add adc fail workaround wake lock */
+	struct wake_lock			adc_workaround_wakelock;
+#endif
 	int					msm_suspend_check;
 	struct pm8xxx_adc_amux_properties	*conv;
-	struct pm8xxx_adc_arb_btm_param		batt[0];
+	struct pm8xxx_adc_arb_btm_param		batt;
 	struct sensor_device_attribute		sens_attr[0];
 };
 
@@ -457,8 +461,8 @@ static void pm8xxx_adc_btm_warm_scheduler_fn(struct work_struct *work)
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
 	warm_status = irq_read_line(adc_pmic->btm_warm_irq);
-	if (adc_pmic->batt->btm_warm_fn != NULL)
-		adc_pmic->batt->btm_warm_fn(warm_status);
+	if (adc_pmic->batt.btm_warm_fn != NULL)
+		adc_pmic->batt.btm_warm_fn(warm_status);
 	spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
 }
 
@@ -471,8 +475,8 @@ static void pm8xxx_adc_btm_cool_scheduler_fn(struct work_struct *work)
 
 	spin_lock_irqsave(&adc_pmic->btm_lock, flags);
 	cool_status = irq_read_line(adc_pmic->btm_cool_irq);
-	if (adc_pmic->batt->btm_cool_fn != NULL)
-		adc_pmic->batt->btm_cool_fn(cool_status);
+	if (adc_pmic->batt.btm_cool_fn != NULL)
+		adc_pmic->batt.btm_cool_fn(cool_status);
 	spin_unlock_irqrestore(&adc_pmic->btm_lock, flags);
 }
 
@@ -684,7 +688,11 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 	}
 
 	mutex_lock(&adc_pmic->adc_lock);
-
+#ifdef CONFIG_LGE_PM
+	/* 120422 mansu.lee@lge.com add adc fail workaround wake lock */
+	wake_lock(&adc_pmic->adc_workaround_wakelock);
+	/* 120422 mansu.lee@lge.com */
+#endif
 	for (i = 0; i < adc_pmic->adc_num_board_channel; i++) {
 		if (channel == adc_pmic->adc_channel[i].channel_name)
 			break;
@@ -732,7 +740,18 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		goto fail;
 	}
 
+#ifdef CONFIG_LGE_PM
+	rc = wait_for_completion_timeout(&adc_pmic->adc_rslt_completion,
+			msecs_to_jiffies(3000));
+	if (!rc) {
+		/* time expire */
+		pr_info("%s: [LGE_PM] pmic adc read timeout at channel[%d]\n", __func__, channel);
+		rc = -ETIMEDOUT;
+		goto fail;
+	}
+#else
 	wait_for_completion(&adc_pmic->adc_rslt_completion);
+#endif
 
 	rc = pm8xxx_adc_read_adc_code(&result->adc_code);
 	if (rc) {
@@ -754,7 +773,11 @@ uint32_t pm8xxx_adc_read(enum pm8xxx_adc_channels channel,
 		rc = -EINVAL;
 		goto fail_unlock;
 	}
-
+#ifdef CONFIG_LGE_PM
+	/* 120422 mansu.lee@lge.com add adc fail workaround wake lock */
+	wake_unlock(&adc_pmic->adc_workaround_wakelock);
+	/* 120422 mansu.lee@lge.com */
+#endif
 	mutex_unlock(&adc_pmic->adc_lock);
 
 	return 0;
@@ -763,6 +786,11 @@ fail:
 	if (rc_fail)
 		pr_err("pm8xxx adc power disable failed\n");
 fail_unlock:
+#ifdef CONFIG_LGE_PM
+	/* 120422 mansu.lee@lge.com add adc fail workaround wake lock */
+	wake_unlock(&adc_pmic->adc_workaround_wakelock);
+	/* 120422 mansu.lee@lge.com */
+#endif
 	mutex_unlock(&adc_pmic->adc_lock);
 	pr_err("pm8xxx adc error with %d\n", rc);
 	return rc;
@@ -870,7 +898,7 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		if (rc < 0)
 			goto write_err;
 
-		adc_pmic->batt->btm_cool_fn = btm_param->btm_cool_fn;
+		adc_pmic->batt.btm_cool_fn = btm_param->btm_cool_fn;
 	}
 
 	if (btm_param->btm_warm_fn != NULL) {
@@ -884,7 +912,7 @@ uint32_t pm8xxx_adc_btm_configure(struct pm8xxx_adc_arb_btm_param *btm_param)
 		if (rc < 0)
 			goto write_err;
 
-		adc_pmic->batt->btm_warm_fn = btm_param->btm_warm_fn;
+		adc_pmic->batt.btm_warm_fn = btm_param->btm_warm_fn;
 	}
 
 	rc = pm8xxx_adc_read_reg(PM8XXX_ADC_ARB_BTM_CNTRL1, &arb_btm_cntrl1);
@@ -962,10 +990,10 @@ static uint32_t pm8xxx_adc_btm_read(uint32_t channel)
 	if (rc < 0)
 		goto write_err;
 
-	if (pmic_adc->batt->btm_warm_fn != NULL)
+	if (pmic_adc->batt.btm_warm_fn != NULL)
 		enable_irq(adc_pmic->btm_warm_irq);
 
-	if (pmic_adc->batt->btm_cool_fn != NULL)
+	if (pmic_adc->batt.btm_cool_fn != NULL)
 		enable_irq(adc_pmic->btm_cool_irq);
 
 write_err:
@@ -1176,7 +1204,6 @@ static int __devinit pm8xxx_adc_probe(struct platform_device *pdev)
 	}
 
 	adc_pmic = devm_kzalloc(&pdev->dev, sizeof(struct pm8xxx_adc) +
-			sizeof(struct pm8xxx_adc_arb_btm_param) +
 			(sizeof(struct sensor_device_attribute) *
 			pdata->adc_num_board_channel), GFP_KERNEL);
 	if (!adc_pmic) {
@@ -1253,6 +1280,12 @@ static int __devinit pm8xxx_adc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, adc_pmic);
 	wake_lock_init(&adc_pmic->adc_wakelock, WAKE_LOCK_SUSPEND,
 					"pm8xxx_adc_wakelock");
+#ifdef CONFIG_LGE_PM
+	/* 120422 mansu.lee@lge.com add adc fail workaround wake lock */
+	wake_lock_init(&adc_pmic->adc_workaround_wakelock, WAKE_LOCK_SUSPEND,
+					"pm8xxx_adc_workaround");
+	/* 120422 mansu.lee@lge.com */
+#endif
 	adc_pmic->msm_suspend_check = 0;
 	pmic_adc = adc_pmic;
 

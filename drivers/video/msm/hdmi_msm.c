@@ -30,6 +30,26 @@
 #include "msm_fb.h"
 #include "hdmi_msm.h"
 
+/* LGE_CHANGE_S
+ * 
+ * do device driver initialization
+ * using multithread during booting,
+ * in order to reduce booting time.
+ * 
+ * byungchul.park@lge.com 20120328
+ */
+#define LGE_MULTICORE_FASTBOOT
+#if defined(CONFIG_MACH_LGE) && defined(LGE_MULTICORE_FASTBOOT)
+#include <linux/kthread.h>
+#endif
+/* LGE_CHANGE_E */
+
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+/* ++ glen.lee (dongwook.lee@lge.com) start */
+#include "mach/amas_hdmi.h"
+/* ++ glen.lee (dongwook.lee@lge.com) stop */
+#endif
+
 /* Supported HDMI Audio channels */
 #define MSM_HDMI_AUDIO_CHANNEL_2		0
 #define MSM_HDMI_AUDIO_CHANNEL_4		1
@@ -51,11 +71,39 @@
 
 static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+ int msm_hdmi_audio_enble_flag=0;	//keyman
+ EXPORT_SYMBOL(msm_hdmi_audio_enble_flag);
+ int msm_compressed_open_select_flag=0;	//keyman
+ EXPORT_SYMBOL(msm_compressed_open_select_flag);
+extern int compressed_open_flag;
+#endif
 /* HDMI/HDCP Registers */
 #define HDCP_DDC_STATUS		0x0128
 #define HDCP_DDC_CTRL_0		0x0120
 #define HDCP_DDC_CTRL_1		0x0124
 #define HDMI_DDC_CTRL		0x020C
+
+/* QCT patch for video quantization issue */
+#ifdef CONFIG_FB_MSM_HDMI_MSM_LG_MHL_CERTIFICATION
+#define DMA_E_BASE 0xB0000
+void video_quantization_setting(void)
+{
+       if((external_common_state->video_resolution == HDMI_VFRMT_720x480p60_4_3)||
+       (external_common_state->video_resolution == HDMI_VFRMT_720x480p60_16_9))
+       {
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x70, 0x00EB0010);
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x74, 0x00EB0010);
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x78, 0x00EB0010);
+       }
+       else
+       {
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x70, 0x00FF0000);
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x74, 0x00FF0000);
+               MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x78, 0x00FF0000);
+       }
+}
+#endif
 
 struct workqueue_struct *hdmi_work_queue;
 struct hdmi_msm_state_type *hdmi_msm_state;
@@ -65,6 +113,10 @@ EXPORT_SYMBOL(hdmi_msm_state_mutex);
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
 
 static void hdmi_msm_dump_regs(const char *prefix);
+
+#ifdef CONFIG_SII8334_MHL_TX
+extern int GetMHLConnectedStatus(void);
+#endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_enable(void);
@@ -620,19 +672,21 @@ static void hdmi_msm_setup_video_mode_lut(void)
 	HDMI_SETUP_LUT(720x480p60_4_3);
 	HDMI_SETUP_LUT(720x480p60_16_9);
 	HDMI_SETUP_LUT(1280x720p60_16_9);
-	HDMI_SETUP_LUT(1920x1080i60_16_9);
 	HDMI_SETUP_LUT(1440x480i60_4_3);
 	HDMI_SETUP_LUT(1440x480i60_16_9);
-	HDMI_SETUP_LUT(1920x1080p60_16_9);
 	HDMI_SETUP_LUT(720x576p50_4_3);
 	HDMI_SETUP_LUT(720x576p50_16_9);
 	HDMI_SETUP_LUT(1280x720p50_16_9);
 	HDMI_SETUP_LUT(1440x576i50_4_3);
 	HDMI_SETUP_LUT(1440x576i50_16_9);
-	HDMI_SETUP_LUT(1920x1080p50_16_9);
 	HDMI_SETUP_LUT(1920x1080p24_16_9);
 	HDMI_SETUP_LUT(1920x1080p25_16_9);
 	HDMI_SETUP_LUT(1920x1080p30_16_9);
+#ifndef CONFIG_SII8334_MHL_TX
+	HDMI_SETUP_LUT(1920x1080i60_16_9);
+	HDMI_SETUP_LUT(1920x1080p50_16_9);
+	HDMI_SETUP_LUT(1920x1080p60_16_9);
+#endif
 }
 
 #ifdef PORT_DEBUG
@@ -766,6 +820,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 {
 	boolean hpd_state;
 	char *envp[2];
+#ifdef CONFIG_SII8334_MHL_TX
+	static int hpd_off_count=0;
+#endif
 
 	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized ||
 		!MSM_HDMI_BASE) {
@@ -776,16 +833,45 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 	DEV_DBG("%s:Got interrupt\n", __func__);
 	/* HPD_INT_STATUS[0x0250] */
 	hpd_state = (HDMI_INP(0x0250) & 0x2) >> 1;
+#ifdef CONFIG_MACH_LGE
+	/* 2012-01-04 junyeong.han@lge.com
+	 * change lock sequence to avoid dead-lock */
+	mutex_lock(&hdmi_msm_state_mutex);
+	mutex_lock(&external_common_state_hpd_mutex);
+#else	/* origin */
 	mutex_lock(&external_common_state_hpd_mutex);
 	mutex_lock(&hdmi_msm_state_mutex);
+#endif
 	if ((external_common_state->hpd_state != hpd_state) || (hdmi_msm_state->
 			hpd_prev_state != external_common_state->hpd_state)) {
-		external_common_state->hpd_state = hpd_state;
-		hdmi_msm_state->hpd_prev_state =
-				external_common_state->hpd_state;
+
 		DEV_DBG("%s: state not stable yet, wait again (%d|%d|%d)\n",
 			__func__, hdmi_msm_state->hpd_prev_state,
 			external_common_state->hpd_state, hpd_state);
+
+#ifdef CONFIG_MACH_LGE
+	/* 2012-02-17
+	 *  Some monior output HPD off thoungh MHL cable is connected.
+	 *  So, we retain the connection state   */
+		if(hdmi_msm_state->hpd_prev_state == 1 && hpd_state == 0){
+#ifdef CONFIG_SII8334_MHL_TX
+			if(GetMHLConnectedStatus()){
+				if(hpd_off_count < 3){
+					printk("[MHL]HPD off but MHL connected.\n");
+					mutex_unlock(&external_common_state_hpd_mutex);
+					mutex_unlock(&hdmi_msm_state_mutex);
+					mod_timer(&hdmi_msm_state->hpd_state_timer, jiffies + HZ/2);
+					hpd_off_count++;
+					return;
+				}
+			}
+			hpd_off_count = 0;
+#endif
+		}
+#endif
+		external_common_state->hpd_state = hpd_state;
+		hdmi_msm_state->hpd_prev_state =
+				external_common_state->hpd_state;
 		mutex_unlock(&external_common_state_hpd_mutex);
 		hdmi_msm_state->hpd_stable = 0;
 		mutex_unlock(&hdmi_msm_state_mutex);
@@ -1109,6 +1195,10 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 
 		/* Clear AUTH_FAIL_INFO as well */
 		HDMI_OUTP(0x0118, (hdcp_int_val | (1 << 7)));
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+		complete_all(&hdmi_msm_state->hdcp_success_done);
+#endif
 		return IRQ_HANDLED;
 	}
 	/*    [8] DDC_XFER_REQ_INT	[R]	HDCP DDC Transfer Request
@@ -1291,6 +1381,7 @@ void hdmi_msm_set_mode(boolean power_on)
 	if (power_on) {
 		/* ENABLE */
 		reg_val |= 0x00000001; /* Enable the block */
+
 		if (external_common_state->hdmi_sink == 0) {
 			/* HDMI_DVI_SEL */
 			reg_val |= 0x00000002;
@@ -2086,6 +2177,11 @@ static int hdmi_msm_ddc_read(uint32 dev_addr, uint32 offset, uint8 *data_buf,
 	}
 }
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+//hyungil.lee@lge.com, 20120307, for EDID
+extern unsigned char ext_edid[0x80 * 4];
+//hyungil.lee@lge.com, 20120307, for EDID
+#endif
 
 static int hdmi_msm_read_edid_block(int block, uint8 *edid_buf)
 {
@@ -2126,6 +2222,11 @@ static int hdmi_msm_read_edid(void)
 	if (!hdmi_msm_is_power_on()) {
 		DEV_ERR("%s: failed: HDMI power is off", __func__);
 		status = -ENXIO;
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+		//hyungil.lee@lge.com, 20120307, for EDID
+		memset(ext_edid, 0, 0x80*4);
+		//hyungil.lee@lge.com, 20120307, for EDID
+#endif
 		goto error;
 	}
 
@@ -2214,6 +2315,7 @@ static int hdmi_msm_count_one(uint8 *array, uint8 len)
 	return count;
 }
 
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdcp_deauthenticate(void)
 {
 	int hdcp_link_status = HDMI_INP(0x011C);
@@ -2332,6 +2434,7 @@ static void check_and_clear_HDCP_DDC_Failure(void)
 	DEV_DBG("%s: On Exit: HDCP_DDC_STATUS = 0x%x, FAILURE = %d,"
 		"NACK0 = %d\n", __func__ , hdcp_ddc_status, failure, nack0);
 }
+#endif
 
 
 static int hdcp_authentication_part1(void)
@@ -2348,7 +2451,12 @@ static int hdcp_authentication_part1(void)
 	uint8 an[8];
 	uint32 link0_an_0, link0_an_1;
 	uint32 hpd_int_status, hpd_int_ctrl;
-
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+	extern int  mdp4_dtv_start_status;
+#endif
 
 	static uint8 buf[0xFF];
 	memset(buf, 0, sizeof(buf));
@@ -2484,8 +2592,16 @@ static int hdcp_authentication_part1(void)
 		[9] AN_1_READY */
 		/* wait for an0 and an1 ready bits to be set in LINK0_STATUS */
 
+		DEV_INFO("HDMI %s LINK0_STATUS\n", __func__);
 		mutex_lock(&hdcp_auth_state_mutex);
-		timeout_count = 100;
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+		timeout_count = 10; //QCT Recommeend value : 10
+#else
+		timeout_count = 100; /* QCT Original */
+#endif
 		while (((HDMI_INP_ND(0x011C) & (0x3 << 8)) != (0x3 << 8))
 			&& timeout_count--)
 			msleep(20);
@@ -2495,6 +2611,8 @@ static int hdcp_authentication_part1(void)
 				__func__, __LINE__,
 			(HDMI_INP_ND(0x011C) & BIT(8)) >> 8,
 			(HDMI_INP_ND(0x011C) & BIT(9)) >> 9);
+			/*LGE : Fix the QCT Bug*/
+			mutex_unlock(&hdcp_auth_state_mutex);
 			goto error;
 		}
 
@@ -2504,6 +2622,15 @@ static int hdcp_authentication_part1(void)
 		 */
 		msleep(20);
 
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+		if(!mdp4_dtv_start_status){
+			mutex_unlock(&hdcp_auth_state_mutex);
+			goto error;
+		}
+#endif
 		/* 0x0168 HDCP_RCVPORT_DATA12
 		   [23:8] BSTATUS
 		   [7:0] BCAPS */
@@ -2519,6 +2646,8 @@ static int hdcp_authentication_part1(void)
 		/* read an1 calculation */
 		link0_an_1 = HDMI_INP(0x0150);
 		mutex_unlock(&hdcp_auth_state_mutex);
+
+		DEV_INFO("HDMI %s HDCP_RCVPORT_DATA6\n", __func__);
 
 		/* three bits 28..30 */
 		hdcp_key_state((HDMI_INP(0x011C) >> 28) & 0x7);
@@ -2959,6 +3088,8 @@ static void hdmi_msm_hdcp_enable(void)
 	uint32 found_repeater = 0x0;
 	char *envp[2];
 
+	DEV_INFO("HDMI %s\n", __func__);
+
 	if (!hdmi_msm_has_hdcp()) {
 		switch_set_state(&external_common_state->sdev, 1);
 		DEV_INFO("Hdmi state switch to %d: %s\n",
@@ -3028,6 +3159,10 @@ static void hdmi_msm_hdcp_enable(void)
 	hdmi_msm_state->full_auth_done = TRUE;
 	mutex_unlock(&hdcp_auth_state_mutex);
 
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+	complete(&hdmi_msm_state->hdcp_activation_done);
+#endif
 	if (!hdmi_msm_is_dvi_mode()) {
 		DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
 		envp[0] = "HDCP_STATE=PASS";
@@ -3052,11 +3187,21 @@ error:
 		hdmi_msm_state->hpd_during_auth = FALSE;
 		mutex_unlock(&hdcp_auth_state_mutex);
 	} else {
-		DEV_WARN("[DEV_DBG]: Calling reauth from [%s]\n", __func__);
+		DEV_WARN("[DEV_DBG]: Calling reauth from [%s] pnl : %d \n", __func__,hdmi_msm_state->panel_power_on);
+#ifndef CONFIG_MACH_LGE
+/* LGE : Solve panal power 0 during HDCP Re-auth
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
 		if (hdmi_msm_state->panel_power_on)
+#endif
 			queue_work(hdmi_work_queue,
 			    &hdmi_msm_state->hdcp_reauth_work);
 	}
+
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+	complete(&hdmi_msm_state->hdcp_activation_done);
+#endif
 	switch_set_state(&external_common_state->sdev, 0);
 	DEV_INFO("Hdmi state switch to %d: %s\n",
 		external_common_state->sdev.state, __func__);
@@ -3221,6 +3366,13 @@ static void hdmi_msm_audio_acr_setup(boolean enabled, int video_format,
 		acr_pck_ctrl_reg |= 0x80000100;
 		/* N_MULTIPLE(multiplier) */
 		acr_pck_ctrl_reg |= (multiplier & 7) << 16;
+
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+		/* ++ glen.lee (dongwook.lee@lge.com) start [2011/12/12] */
+		/* acr_pck_ctrl_reg의 ACR 값을 정상적으로 넣기 위한 곳 */
+		acr_pck_ctrl_reg &= 0xFFFFFF0F;
+		/* ++ glen.lee (dongwook.lee@lge.com) stop [2011/12/12] */
+#endif
 
 		if ((MSM_HDMI_SAMPLE_RATE_48KHZ == audio_sample_rate) ||
 		    (MSM_HDMI_SAMPLE_RATE_96KHZ == audio_sample_rate) ||
@@ -3588,6 +3740,35 @@ void hdmi_msm_audio_sample_rate_reset(int rate)
 }
 EXPORT_SYMBOL(hdmi_msm_audio_sample_rate_reset);
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+
+int hdmi_msm_audio_is_enabled(void)	//keyman
+{
+	//check hdmi connect status
+#ifdef CONFIG_SII8334_MHL_TX
+	if(!GetMHLConnectedStatus())
+	{
+		DEV_DBG("MHL is not connected\n");
+		return 0;	
+	}
+#else
+	boolean hpd_state;
+	hpd_state = (HDMI_INP(0x0250) & 0x2) >> 1;
+	if ((external_common_state->hpd_state != hpd_state) || (hdmi_msm_state->hpd_prev_state != external_common_state->hpd_state)) 
+	{
+		DEV_DBG("MHL is not connected\n");
+		return 0;	
+	}
+#endif
+	if(msm_compressed_open_select_flag==0) return 0;
+
+	msm_compressed_open_select_flag = 0; // keyman++
+	return msm_hdmi_audio_enble_flag;
+}
+EXPORT_SYMBOL(hdmi_msm_audio_is_enabled);
+#endif
+
+
 static void hdmi_msm_audio_setup(void)
 {
 	const int channels = MSM_HDMI_AUDIO_CHANNEL_2;
@@ -3607,6 +3788,9 @@ static void hdmi_msm_audio_setup(void)
 	/* Turn on Audio FIFO and SAM DROP ISR */
 	HDMI_OUTP(0x02CC, HDMI_INP(0x02CC) | BIT(1) | BIT(3));
 	DEV_INFO("HDMI Audio: Enabled\n");
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+	msm_hdmi_audio_enble_flag=1;	//keyman
+#endif
 }
 
 static int hdmi_msm_audio_off(void)
@@ -3614,6 +3798,9 @@ static int hdmi_msm_audio_off(void)
 	uint32 audio_pkt_ctrl, audio_cfg;
 	 /* Number of wait iterations */
 	int i = 10;
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+	msm_hdmi_audio_enble_flag=0;	//keyman
+#endif
 	audio_pkt_ctrl = HDMI_INP_ND(0x0020);
 	audio_cfg = HDMI_INP_ND(0x01D0);
 
@@ -3636,9 +3823,21 @@ static int hdmi_msm_audio_off(void)
 	hdmi_msm_audio_info_setup(FALSE, 0, 0, 0, FALSE);
 	hdmi_msm_audio_acr_setup(FALSE, 0, 0, 0);
 	DEV_INFO("HDMI Audio: Disabled\n");
+
 	return 0;
 }
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH // dongwook.lee
+/* ++ glen.lee (dongwook.lee@lge.com) start [2011/12/15] */
+void hdmi_msm_samplingrate_setting(int sampling_rate)
+{
+	msm_hdmi_sample_rate = sampling_rate;
+
+	hdmi_msm_audio_off();
+	hdmi_msm_audio_setup();
+}
+/* ++ glen.lee (dongwook.lee@lge.com) stop [2011/12/15] */
+#endif
 
 static uint8 hdmi_msm_avi_iframe_lut[][16] = {
 /*	480p60	480i60	576p50	576i50	720p60	 720p50	1080p60	1080i60	1080p50
@@ -3647,8 +3846,14 @@ static uint8 hdmi_msm_avi_iframe_lut[][16] = {
 	 0x10,	0x10,	0x10,	0x10,	0x10, 0x10, 0x10}, /*00*/
 	{0x18,	0x18,	0x28,	0x28,	0x28,	 0x28,	0x28,	0x28,	0x28,
 	 0x28,	0x28,	0x28,	0x28,	0x18, 0x28, 0x18}, /*01*/
+/* QCT patch for avi information frame issue */
+#ifdef CONFIG_FB_MSM_HDMI_MSM_LG_MHL_CERTIFICATION
+	{0x00,  0x00,   0x00,   0x00,   0x00,    0x00,  0x00,   0x00,   0x00,
+	 0x00,  0x00,   0x00,   0x00,   0x00, 0x00, 0x00}, /*02*/
+#else
 	{0x04,	0x04,	0x04,	0x04,	0x04,	 0x04,	0x04,	0x04,	0x04,
 	 0x04,	0x04,	0x04,	0x04,	0x88, 0x04, 0x04}, /*02*/
+#endif
 	{0x02,	0x06,	0x11,	0x15,	0x04,	 0x13,	0x10,	0x05,	0x1F,
 	 0x14,	0x20,	0x22,	0x21,	0x01, 0x03, 0x11}, /*03*/
 	{0x00,	0x01,	0x00,	0x01,	0x00,	 0x00,	0x00,	0x00,	0x00,
@@ -4073,7 +4278,14 @@ static void hdmi_msm_hpd_off(void)
 
 	hdmi_msm_set_mode(FALSE);
 	hdmi_msm_state->hpd_initialized = FALSE;
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	 * patch from QCT.
+	 * Add code for crash in hdmi_pll_enable()
+	 * 2010-03-15, soodong.kim@lge.com
+	 */
 	hdmi_msm_powerdown_phy();
+#endif
 	hdmi_msm_state->pd->cec_power(0);
 	hdmi_msm_state->pd->enable_5v(0);
 	hdmi_msm_state->pd->core_power(0, 1);
@@ -4089,7 +4301,7 @@ static void hdmi_msm_dump_regs(const char *prefix)
 #endif
 }
 
-static int hdmi_msm_hpd_on(bool trigger_handler)
+int hdmi_msm_hpd_on(bool trigger_handler)
 {
 	static int phy_reset_done;
 	uint32 hpd_ctrl;
@@ -4172,6 +4384,16 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	DEV_INFO("power: ON (%dx%d %d)\n", mfd->var_xres, mfd->var_yres,
 		mfd->var_pixclock);
 
+#ifdef CONFIG_MACH_LGE
+        /* LGE_CHANGE
+         * patch from QCT.
+         * Add code for crash in hdmi_pll_enable()
+         * 2010-03-15, soodong.kim@lge.com
+         */
+	if (device_suspended)
+		hdmi_msm_hpd_on(true);
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	mutex_lock(&hdmi_msm_state_mutex);
 	if (hdmi_msm_state->hdcp_activating) {
@@ -4225,9 +4447,19 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	mutex_lock(&hdmi_msm_state_mutex);
 	if (hdmi_msm_state->hdcp_activating) {
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+		INIT_COMPLETION(hdmi_msm_state->hdcp_activation_done);
+		DEV_INFO("HDCP: activating, waiting %s\n",__func__);
+		mutex_unlock(&hdmi_msm_state_mutex);
+		wait_for_completion_interruptible_timeout(&hdmi_msm_state->hdcp_activation_done,3*HZ);
+		hdmi_msm_state->reauth = TRUE;
+		mutex_lock(&hdmi_msm_state_mutex);
+#endif
 		hdmi_msm_state->panel_power_on = FALSE;
 		mutex_unlock(&hdmi_msm_state_mutex);
 		DEV_INFO("HDCP: activating, returning\n");
+
 		return 0;
 	}
 	mutex_unlock(&hdmi_msm_state_mutex);
@@ -4241,7 +4473,18 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	hdmi_msm_hpd_off();
 	hdmi_msm_powerdown_phy();
 	hdmi_msm_dump_regs("HDMI-OFF: ");
+
+#ifdef CONFIG_MACH_LGE
+        /* LGE_CHANGE
+         * patch from QCT.
+         * Add code for crash in hdmi_pll_enable()
+         * 2010-03-15, soodong.kim@lge.com
+         */
+	if (!device_suspended)
+		hdmi_msm_hpd_on(true);
+#else /* QCT original */
 	hdmi_msm_hpd_on(true);
+#endif
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (!external_common_state->hpd_feature_on || mfd->ref_cnt)
@@ -4249,8 +4492,56 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	mutex_unlock(&external_common_state_hpd_mutex);
 
 	hdmi_msm_state->panel_power_on = FALSE;
+
 	return 0;
 }
+
+
+/* LGE_CHANGE_S
+ * 
+ * do device driver initialization
+ * using multithread during booting,
+ * in order to reduce booting time.
+ * 
+ * byungchul.park@lge.com 20120328
+ */
+#if defined(CONFIG_MACH_LGE) && defined(LGE_MULTICORE_FASTBOOT)
+static int hdmi_msm_probe_thread(void *arg)
+{
+	hdmi_msm_hpd_on(true);
+
+	if (hdmi_msm_has_hdcp()) {
+		/* Don't Set Encryption in case of non HDCP builds */
+		external_common_state->present_hdcp = FALSE;
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+		external_common_state->present_hdcp = TRUE;
+#endif
+	} else {
+		external_common_state->present_hdcp = FALSE;
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+		/*
+		 * If the device is not hdcp capable do
+		 * not start hdcp timer.
+		 */
+		del_timer(&hdmi_msm_state->hdcp_timer);
+#endif
+	}
+
+	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
+
+	/* Initialize hdmi node and register with switch driver */
+#ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
+	external_common_state->sdev.name = "hdmi_as_primary";
+#else
+	external_common_state->sdev.name = "hdmi";
+#endif
+	if (switch_dev_register(&external_common_state->sdev) < 0)
+		DEV_ERR("Hdmi switch registration failed\n");
+
+	return 0;
+}
+#endif /* CONFIG_MACH_LGE && LGE_MULTICORE_FASTBOOT */
+/* LGE_CHANGE_E */
 
 static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 {
@@ -4398,6 +4689,27 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 
 	DEV_INFO("HDMI HPD: ON\n");
 
+/* LGE_CHANGE_S
+ * 
+ * do device driver initialization
+ * using multithread during booting,
+ * in order to reduce booting time.
+ * 
+ * byungchul.park@lge.com 20120328
+ */
+#if defined(CONFIG_MACH_LGE) && defined(LGE_MULTICORE_FASTBOOT)
+	{
+		struct task_struct *th;
+		th = kthread_create(hdmi_msm_probe_thread, NULL, "hdmi_msm_probe");
+		if (IS_ERR(th)) {
+			rc = PTR_ERR(th);
+			goto error;
+		}
+		wake_up_process(th);
+		return 0;
+	}
+#else	/* original */
+/* LGE_CHANGE_E */
 	rc = hdmi_msm_hpd_on(true);
 	if (rc)
 		goto error;
@@ -4431,7 +4743,16 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 		DEV_ERR("Hdmi switch registration failed\n");
 
 	return 0;
-
+/* LGE_CHANGE_S
+ * 
+ * do device driver initialization
+ * using multithread during booting,
+ * in order to reduce booting time.
+ * 
+ * byungchul.park@lge.com 20120328
+ */
+#endif /* CONFIG_MACH_LGE && LGE_MULTICORE_FASTBOOT */
+/* LGE_CHANGE_E */
 error:
 	if (hdmi_msm_state->qfprom_io)
 		iounmap(hdmi_msm_state->qfprom_io);
@@ -4553,7 +4874,11 @@ static int __init hdmi_msm_init(void)
 	}
 
 	external_common_state = &hdmi_msm_state->common;
+#ifdef CONFIG_SII8334_MHL_TX
+	external_common_state->video_resolution = HDMI_VFRMT_1920x1080p30_16_9;
+#else
 	external_common_state->video_resolution = HDMI_VFRMT_1920x1080p60_16_9;
+#endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 	external_common_state->switch_3d = hdmi_msm_switch_3d;
 #endif
@@ -4592,6 +4917,10 @@ static int __init hdmi_msm_init(void)
 	INIT_WORK(&hdmi_msm_state->hpd_state_work, hdmi_msm_hpd_state_work);
 	INIT_WORK(&hdmi_msm_state->hpd_read_work, hdmi_msm_hpd_read_work);
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+	init_completion(&hdmi_msm_state->hdcp_activation_done);
+#endif
 	init_completion(&hdmi_msm_state->hdcp_success_done);
 	INIT_WORK(&hdmi_msm_state->hdcp_reauth_work, hdmi_msm_hdcp_reauth_work);
 	INIT_WORK(&hdmi_msm_state->hdcp_work, hdmi_msm_hdcp_work);

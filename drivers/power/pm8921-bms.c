@@ -26,6 +26,20 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 
+#if defined(CONFIG_LGE_PM) && defined(CONFIG_MACH_MSM8960_L0)
+#include <mach/board_lge.h>
+#endif
+
+#if defined(CONFIG_MACH_MSM8960_L0) || defined(CONFIG_MACH_MSM8960_L1A)
+#define BMS_SOC_INFO
+#endif
+
+/* L0/L1A, bms_soc_averaging
+ * BMS the number of averaging unit
+ * 2012-04-22, hyemin.cho@lge.com
+ */
+#define I_MAX 30
+
 #define BMS_CONTROL		0x224
 #define BMS_OUTPUT0		0x230
 #define BMS_OUTPUT1		0x231
@@ -41,6 +55,15 @@
 #define ADC_ARB_SECP_DATA0	0x196
 
 #define ADC_ARB_BMS_CNTRL	0x18D
+
+
+/* L0/L1A, bms_soc_logging
+ * Workaround for BMS error Debugging
+ * 2012-03-30, hyemin.cho@lge.com
+ */
+#ifdef BMS_SOC_INFO
+#define BMS_SOC_INFORM_TIME 30000
+#endif
 
 enum pmic_bms_interrupts {
 	PM8921_BMS_SBI_WRITE_OK,
@@ -86,6 +109,9 @@ struct pm8921_bms_chip {
 	struct pc_sf_lut	*pc_sf_lut;
 	struct work_struct	calib_hkadc_work;
 	struct delayed_work	calib_ccadc_work;
+#ifdef BMS_SOC_INFO
+	struct delayed_work	bms_soc_work;/*2012-03-30 bms_soc_logging hyemin.cho@lge.com*/
+#endif
 	unsigned int		calib_delay_ms;
 	unsigned int		revision;
 	unsigned int		xoadc_v0625;
@@ -1050,6 +1076,28 @@ static int calculate_real_fcc_uah(struct pm8921_bms_chip *chip,
 			real_fcc_uah, remaining_charge_uah, cc_uah, fcc_uah);
 	return real_fcc_uah;
 }
+
+
+/* L0/L1A, bms_soc_averaging
+ * BMS averaging function
+ * 2012-04-22, hyemin.cho@lge.com
+ */
+int cal_rnd_avg(int *soc_value)
+{
+	 int sum=0;
+	 int avr=0;
+	 int i;
+
+	 for(i = 0; i<I_MAX; i++)
+	 {
+		sum += soc_value[i];
+	 }
+
+	 avr = ((sum/I_MAX)*10+5)/10;
+
+	 return avr;
+}
+
 /*
  * Remaining Usable Charge = remaining_charge (charge at ocv instance)
  *				- coloumb counter charge
@@ -1064,6 +1112,20 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	int remaining_charge_uah, soc;
 	int update_userspace = 1;
 	int cc_uah;
+/* L0/L1A, bms_soc_averaging
+* BMS averaging variable
+* 2012-04-22, hyemin.cho@lge.com
+*/
+	static int	soc_buf[I_MAX]={0,};
+	static int	cntSOC = 0;
+	static int	idxBuf = 0;
+	int			idxsoc = 0;
+	int			avgSOC = 0;
+
+
+#if defined(CONFIG_MACH_MSM8960_L0) || defined(CONFIG_MACH_MSM8960_L1A)
+	int vbatt;
+#endif
 
 	calculate_soc_params(chip, raw, batt_temp, chargecycles,
 						&fcc_uah,
@@ -1080,6 +1142,37 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	soc = (remaining_usable_charge_uah * 100)
 		/ (fcc_uah - unusable_charge_uah);
 
+	/* 5% Compensation of SOC Value, need to verify.
+	 * 2012-04-09, junsin.park@lge.com 
+	 */
+	soc = (soc*100/95);
+
+	// average of last 30 measured comp_soc value
+	if ( cntSOC == 0)//access once
+	{
+		for(idxsoc=0; idxsoc<I_MAX; idxsoc++)
+		{
+			soc_buf[idxsoc] = soc;
+		}
+		avgSOC = soc;
+		cntSOC = I_MAX;
+		idxBuf = 1;
+	}
+	else
+	{
+		if (idxBuf >= I_MAX )
+		{
+			idxBuf = 0;
+		}
+		soc_buf[idxBuf] = soc;
+
+		idxBuf++;
+
+		avgSOC = cal_rnd_avg(soc_buf);
+	}
+
+	soc = avgSOC;
+
 	if (soc > 100)
 		soc = 100;
 	pr_debug("SOC = %u%%\n", soc);
@@ -1089,6 +1182,16 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		return bms_fake_battery;
 	}
 
+/* L0/L1A, Set cut-off soc level
+ * Workaround for BMS error. Force power-off the phone under 3.3V.
+ * 2012-03-22, junsin.park@lge.com
+ */
+#if defined(CONFIG_MACH_MSM8960_L0) || defined(CONFIG_MACH_MSM8960_L1A)
+	get_battery_uvolts(chip, &vbatt);
+	if ((vbatt/1000) < 3300)
+		soc = 0;
+	return soc;
+#endif
 	if (soc < 0) {
 		pr_err("bad rem_usb_chg = %d rem_chg %d,"
 				"cc_uah %d, unusb_chg %d\n",
@@ -1172,6 +1275,69 @@ static void calibrate_ccadc_work(struct work_struct *work)
 			round_jiffies_relative(msecs_to_jiffies
 			(chip->calib_delay_ms)));
 }
+
+/* L0/L1A, bms_soc_logging
+ * Workaround for BMS error Debugging
+ * 2012-03-30, hyemin.cho@lge.com
+ */
+#ifdef BMS_SOC_INFO
+static int get_prop_batt_temp(struct pm8921_bms_chip *chip)
+{
+	int rc;
+	struct pm8xxx_adc_chan_result result;
+
+	rc = pm8xxx_adc_read(chip->batt_temp_channel, &result);
+	if (rc) {
+		pr_err("error reading adc channel = %d, rc = %d\n",
+					chip->vbat_channel, rc);
+		return rc;
+	}
+	pr_debug("batt_temp phy = %lld meas = 0x%llx\n", result.physical,
+						result.measurement);
+	if (result.physical > 680)
+		pr_err("BATT_TEMP= %d > 68degC, device will be shutdown\n",
+							(int) result.physical);
+
+	return (int)result.physical;
+}
+
+static int get_prop_batt_current(struct pm8921_bms_chip *chip)
+{
+	int result_ua, rc;
+
+	rc = pm8921_bms_get_battery_current(&result_ua);
+	if (rc == -ENXIO) {
+		rc = pm8xxx_ccadc_get_battery_current(&result_ua);
+	}
+
+	if (rc) {
+		pr_err("unable to get batt current rc = %d\n", rc);
+		return rc;
+	} else {
+		return result_ua;
+	}
+}
+
+static void bms_soc_monitor_work(struct work_struct *work)
+{
+	struct pm8921_bms_chip *chip = container_of(work,
+				struct pm8921_bms_chip, bms_soc_work.work);
+
+	int vbatt, soc, batt_temp, ibat;
+
+	soc = pm8921_bms_get_percent_charge();
+	batt_temp = get_prop_batt_temp(chip)/10;
+	ibat = get_prop_batt_current(chip);
+	get_battery_uvolts(chip, &vbatt);
+
+	printk(KERN_INFO"[BMS_SOC_INFO] soc=%d%% vbatt=%dV temp=%d ibat=%dmA\n", soc, vbatt/1000, batt_temp, ibat/1000);
+
+	schedule_delayed_work(&chip->bms_soc_work,
+			round_jiffies_relative(msecs_to_jiffies
+			(BMS_SOC_INFORM_TIME)));
+}
+#endif
+
 
 int pm8921_bms_get_vsense_avg(int *result)
 {
@@ -1587,7 +1753,22 @@ static int set_battery_data(struct pm8921_bms_chip *chip)
 		chip->pc_temp_ocv_lut = palladium_1500_data.pc_temp_ocv_lut;
 		chip->pc_sf_lut = palladium_1500_data.pc_sf_lut;
 		return 0;
-	} else {
+	}
+/* L0, Change Battery Profile
+*  Battery is changed from 4.20V to 4.35V after Rev.C
+*  2012-03-19, junsin.park@lge.com
+*/
+#if defined(CONFIG_LGE_PM) && defined(CONFIG_MACH_MSM8960_L0)
+	else if (lge_get_board_revno() < HW_REV_D) {
+		chip->fcc = palladium_1500_data_2.fcc;
+		chip->fcc_temp_lut = palladium_1500_data_2.fcc_temp_lut;
+		chip->fcc_sf_lut = palladium_1500_data_2.fcc_sf_lut;
+		chip->pc_temp_ocv_lut = palladium_1500_data_2.pc_temp_ocv_lut;
+		chip->pc_sf_lut = palladium_1500_data_2.pc_sf_lut;
+		return 0;
+	}
+#endif
+	else {
 		pr_warn("invalid battery id, palladium 1500 assumed\n");
 		chip->fcc = palladium_1500_data.fcc;
 		chip->fcc_temp_lut = palladium_1500_data.fcc_temp_lut;
@@ -1910,6 +2091,15 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	/* enable the vbatt reading interrupts for scheduling hkadc calib */
 	pm8921_bms_enable_irq(chip, PM8921_BMS_GOOD_OCV);
 	pm8921_bms_enable_irq(chip, PM8921_BMS_OCV_FOR_R);
+
+/* L0/L1A, bms_soc_logging
+ * Workaround for BMS error Debugging
+ * 2012-03-30, hyemin.cho@lge.com
+ */
+#ifdef BMS_SOC_INFO
+	INIT_DELAYED_WORK(&chip->bms_soc_work, bms_soc_monitor_work);
+	schedule_delayed_work(&chip->bms_soc_work, 0);
+#endif
 
 	get_battery_uvolts(chip, &vbatt);
 	pr_info("OK battery_capacity_at_boot=%d volt = %d ocv = %d\n",

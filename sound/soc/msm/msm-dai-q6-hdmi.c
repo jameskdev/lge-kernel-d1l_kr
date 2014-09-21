@@ -28,6 +28,18 @@
 #include <mach/clk.h>
 #include <mach/msm_hdmi_audio.h>
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+#include <msm-pcm-q6.h>	//dongwook.lee++
+#include <sound/q6asm.h>	// dongwook.lee ++
+#endif
+/* This file should not be compiled when HDMI is disabled. 
+ * 2012-02-17, dangwoo.choi@lge.com
+ */ 
+//keyman
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+extern int compressed_open_flag;
+#endif
+#ifdef CONFIG_FB_MSM_HDMI_COMMON
 
 enum {
 	STATUS_PORT_STARTED, /* track if AFE port has started */
@@ -57,6 +69,15 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 
 	dai_data->channels = params_channels(params);
 	dai_data->rate = params_rate(params);
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+//	printk("msm_dai_q6_hdmi_hw_params: dai_data->rate:%d ratenum:%d, rateden:%d\n",dai_data->rate, params->rate_num, params->rate_den); //keyman.kim@lge.com
+	if(compressed_open_flag)
+	{
+		dai_data->rate = params->rate_num;	// keyman.kim@lge.com
+		dai_data->port_config.hdmi_multi_ch.data_type= 1;	//non_linear case
+	}
+	else
+#endif
 	dai_data->port_config.hdmi_multi_ch.data_type = 0;
 	dai_data->port_config.hdmi_multi_ch.reserved = 0;
 
@@ -128,10 +149,20 @@ static int msm_dai_q6_hdmi_prepare(struct snd_pcm_substream *substream,
 	return rc;
 }
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+extern int q6asm_session_cmd_connect_afe_port_nowait(struct audio_client *ac);
+extern int q6asm_iec_60958_frame_rate_write_nowait(struct audio_client *ac, uint32_t sample_rate);
+#endif
+
 static int msm_dai_q6_hdmi_trigger(struct snd_pcm_substream *substream, int cmd,
 		struct snd_soc_dai *dai)
 {
 	struct msm_dai_q6_hdmi_dai_data *dai_data = dev_get_drvdata(dai->dev);
+
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct msm_audio *prtd = runtime->private_data; 	// dongwook.lee ++
+#endif
 
 	/* Start/stop port without waiting for Q6 AFE response. Need to have
 	 * native q6 AFE driver propagates AFE response in order to handle
@@ -145,9 +176,39 @@ static int msm_dai_q6_hdmi_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-			afe_port_start_nowait(dai->id, &dai_data->port_config,
-					dai_data->rate);
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+			pr_debug("msm_dai_q6_hdmi_trigger: compressed_open_flag: %d, samplerate: %d\n", compressed_open_flag, dai_data->rate);
+			if(compressed_open_flag)
+			{
+				if(hdmi_msm_audio_get_sample_rate() != dai_data->rate)
+				{
+					switch(dai_data->rate)
+					{
+						case  48000:
+							hdmi_msm_samplingrate_setting(HDMI_SAMPLE_RATE_48KHZ);
+							break;
+						case 44100:
+							hdmi_msm_samplingrate_setting(HDMI_SAMPLE_RATE_44_1KHZ);
+							break;	
+						case 32000:
+							hdmi_msm_samplingrate_setting(HDMI_SAMPLE_RATE_32KHZ);
+							break;
+					}
+				}
+				afe_port_start_nowait(dai->id, &dai_data->port_config, dai_data->rate);//afe_open(dai->id, &dai_data->port_config, dai_data->rate);
+				q6asm_session_cmd_connect_afe_port_nowait(prtd->audio_client);
+				q6asm_iec_60958_frame_rate_write_nowait(prtd->audio_client, dai_data->rate); //keyman, will be updated
+			}
+			else
+			{
+				hdmi_msm_samplingrate_setting(HDMI_SAMPLE_RATE_48KHZ);		// dongwook.lee add
+#endif
+				afe_port_start_nowait(dai->id, &dai_data->port_config,
+						dai_data->rate);
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+			}
+#endif
 			set_bit(STATUS_PORT_STARTED, dai_data->status_mask);
 		}
 		break;
@@ -217,12 +278,20 @@ static struct snd_soc_dai_ops msm_dai_q6_hdmi_ops = {
 
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 	.playback = {
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+		.rates = SNDRV_PCM_RATE_32000|SNDRV_PCM_RATE_44100|SNDRV_PCM_RATE_48000,//keyman
+#else
 		.rates = SNDRV_PCM_RATE_48000,
+#endif
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		.channels_min = 2,
 		.channels_max = 6,
 		.rate_max =     48000,
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+		.rate_min =	32000,
+#else
 		.rate_min =	48000,
+#endif
 	},
 	.ops = &msm_dai_q6_hdmi_ops,
 	.probe = msm_dai_q6_hdmi_dai_probe,
@@ -277,6 +346,8 @@ static void __exit msm_dai_q6_hdmi_exit(void)
 	platform_driver_unregister(&msm_dai_q6_hdmi_driver);
 }
 module_exit(msm_dai_q6_hdmi_exit);
+
+#endif
 
 /* Module information */
 MODULE_DESCRIPTION("MSM DSP HDMI DAI driver");

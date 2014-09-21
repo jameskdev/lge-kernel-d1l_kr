@@ -472,7 +472,6 @@ int pmem_kfree(const int32_t physaddr)
 EXPORT_SYMBOL(pmem_kfree);
 
 unsigned int msm_ttbr0;
-
 void store_ttbr0(void)
 {
 	/* Store TTBR0 for post-mortem debugging purposes. */

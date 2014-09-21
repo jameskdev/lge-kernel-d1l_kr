@@ -34,7 +34,11 @@ void diag_smd_cntl_notify(void *ctxt, unsigned event)
 			queue_work(driver->diag_wq,
 				 &(driver->diag_read_smd_cntl_work));
 		else
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			pr_debug("diag: incomplete pkt on Modem CNTL ch\n");
+#else
 			pr_info("diag: incomplete pkt on Modem CNTL ch\n");
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		break;
 	case SMD_EVENT_OPEN:
 		queue_work(driver->diag_cntl_wq,
@@ -58,7 +62,11 @@ void diag_smd_qdsp_cntl_notify(void *ctxt, unsigned event)
 			queue_work(driver->diag_wq,
 				 &(driver->diag_read_smd_qdsp_cntl_work));
 		else
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			pr_debug("diag: incomplete pkt on LPASS CNTL ch\n");
+#else
 			pr_info("diag: incomplete pkt on LPASS CNTL ch\n");
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		break;
 	case SMD_EVENT_OPEN:
 		queue_work(driver->diag_cntl_wq,
@@ -82,7 +90,11 @@ void diag_smd_wcnss_cntl_notify(void *ctxt, unsigned event)
 			queue_work(driver->diag_wq,
 				 &(driver->diag_read_smd_wcnss_cntl_work));
 		else
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			pr_debug("diag: incomplete pkt on WCNSS CNTL ch\n");
+#else
 			pr_info("diag: incomplete pkt on WCNSS CNTL ch\n");
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		break;
 	case SMD_EVENT_OPEN:
 		queue_work(driver->diag_cntl_wq,

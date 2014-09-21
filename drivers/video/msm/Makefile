@@ -69,6 +69,15 @@ msm_mipi-objs := mipi_dsi.o mipi_dsi_host.o
 obj-$(CONFIG_FB_MSM_MIPI_DSI) += msm_mipi.o
 
 # MIPI manufacture
+# LGE_CHANGE_S. minjong.gong@lge.com. 2011.06.20
+obj-$(CONFIG_FB_MSM_MIPI_DSI_LGIT) += mipi_lgit.o
+obj-$(CONFIG_FB_MSM_MIPI_DSI_HITACHI) += mipi_hitachi.o
+obj-$(CONFIG_FB_MSM_MIPI_DSI_LGD) += mipi_lgd.o
+# LGE_CHANGE_E
+
+# LGE_CHANGE. hoseok.kim@lge.com. 2011.12.21
+obj-$(CONFIG_FB_MSM_MIPI_DSI_R61529) += mipi_r61529.o
+
 obj-$(CONFIG_FB_MSM_MIPI_DSI_TOSHIBA) += mipi_toshiba.o
 obj-$(CONFIG_FB_MSM_MIPI_DSI_NOVATEK) += mipi_novatek.o
 obj-$(CONFIG_FB_MSM_MIPI_DSI_RENESAS) += mipi_renesas.o
@@ -116,6 +125,24 @@ obj-y += mipi_renesas_video_fwvga_pt.o mipi_renesas_cmd_fwvga_pt.o
 obj-y += mipi_chimei_wxga_pt.o
 obj-y += mipi_truly_video_wvga_pt.o
 else
+# LGE_CHANGE_S. minjong.gong@lge.com. 2011.06.20
+obj-$(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_HD_PT) += mipi_lgit_video_hd_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_PT) += mipi_lgit_cmd_wvga_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_PT) += mipi_lgit_video_wvga_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_HITACHI_VIDEO_HD_PT) += mipi_hitachi_video_hd_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_HITACHI_VIDEO_WVGA_PT) += mipi_hitachi_video_wvga_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_LGD_VIDEO_QHD_PT) += mipi_lgd_video_qhd_pt.o
+# LGE_CHANGE_E
+
+# LGE_CHANGE. hoseok.kim@lge.com. 2011.12.21
+obj-$(CONFIG_FB_MSM_MIPI_R61529_CMD_HVGA_PT) += mipi_r61529_cmd_hvga_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_R61529_VIDEO_HVGA_PT) += mipi_r61529_video_hvga_pt.o
+
+# LGE_CHANGE_S. kyunghoo.ryu@lge.com. 2011.11.24
+obj-$(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT) += mipi_lgit_cmd_wvga_pt.o
+obj-$(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT) += mipi_lgit_video_wvga_pt.o
+# LGE_CHANGE_E
+
 obj-$(CONFIG_FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT) += mipi_toshiba_video_wvga_pt.o
 obj-$(CONFIG_FB_MSM_MIPI_TOSHIBA_VIDEO_WSVGA_PT) += mipi_toshiba_video_wsvga_pt.o
 obj-$(CONFIG_FB_MSM_MIPI_TOSHIBA_VIDEO_WUXGA) += mipi_toshiba_video_wuxga.o
@@ -158,5 +185,6 @@ obj-$(CONFIG_FB_MSM_WRITEBACK_MSM_PANEL) += mdp4_overlay_writeback.o
 obj-$(CONFIG_MSM_VIDC_1080P) += vidc/
 obj-$(CONFIG_MSM_VIDC_720P) += vidc/
 
+obj-$(CONFIG_LGE_LCD_TUNING) += lge_lcd_misc_ctrl.o
 clean:
 	rm *.o .*cmd

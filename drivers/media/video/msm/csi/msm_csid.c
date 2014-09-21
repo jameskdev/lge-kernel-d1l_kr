@@ -51,8 +51,8 @@
 #define CSID_TG_DT_n_CFG_1_ADDR                     0xAC
 #define CSID_TG_DT_n_CFG_2_ADDR                     0xB0
 #define CSID_TG_DT_n_CFG_3_ADDR                     0xD8
-
-#define DBG_CSID 0
+#define CSID_RST_DONE_IRQ_BITSHIFT                  11
+#define CSID_RST_STB_ALL                            0x7FFF
 
 static int msm_csid_cid_lut(
 	struct msm_camera_csid_lut_params *csid_lut_params,
@@ -92,6 +92,7 @@ static int msm_csid_config(struct csid_cfg_params *cfg_params)
 	csid_dev = v4l2_get_subdevdata(cfg_params->subdev);
 	csidbase = csid_dev->base;
 	csid_params = cfg_params->parms;
+
 	val = csid_params->lane_cnt - 1;
 	val |= csid_params->lane_assign << 2;
 	val |= 0x1 << 10;
@@ -105,8 +106,9 @@ static int msm_csid_config(struct csid_cfg_params *cfg_params)
 	if (rc < 0)
 		return rc;
 
-	msm_io_w(0x7fF10800, csidbase + CSID_IRQ_MASK_ADDR);
-	msm_io_w(0x7fF10800, csidbase + CSID_IRQ_CLEAR_CMD_ADDR);
+	val = ((1 << csid_params->lane_cnt) - 1) << 20;
+	msm_io_w(0x7f010800 | val, csidbase + CSID_IRQ_MASK_ADDR);
+	msm_io_w(0x7f010800 | val, csidbase + CSID_IRQ_CLEAR_CMD_ADDR);
 
 	msleep(20);
 	return rc;
@@ -119,8 +121,17 @@ static irqreturn_t msm_csid_irq(int irq_num, void *data)
 	irq = msm_io_r(csid_dev->base + CSID_IRQ_STATUS_ADDR);
 	CDBG("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
 		 __func__, csid_dev->pdev->id, irq);
+	if (irq & (0x1 << CSID_RST_DONE_IRQ_BITSHIFT))
+			complete(&csid_dev->reset_complete);
 	msm_io_w(irq, csid_dev->base + CSID_IRQ_CLEAR_CMD_ADDR);
 	return IRQ_HANDLED;
+}
+
+static void msm_csid_reset(struct csid_device *csid_dev)
+{
+	msm_io_w(CSID_RST_STB_ALL, csid_dev->base + CSID_RST_CMD_ADDR);
+	wait_for_completion_interruptible(&csid_dev->reset_complete);
+	return;
 }
 
 static int msm_csid_subdev_g_chip_ident(struct v4l2_subdev *sd,
@@ -185,10 +196,26 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		msm_io_r(csid_dev->base + CSID_HW_VERSION_ADDR);
 	*csid_version = csid_dev->hw_version;
 
-#if DBG_CSID
+	init_completion(&csid_dev->reset_complete);
+
+//QCT patch S, Fix_CSI_IRQ, 2012-05-03, freeso.kim
+#if 0
 	enable_irq(csid_dev->irq->start);
+#else
+	rc = request_irq(csid_dev->irq->start, msm_csid_irq,
+		IRQF_TRIGGER_RISING, "csid", csid_dev);
 #endif
+//QCT patch E, Fix_CSI_IRQ, 2012-05-03, freeso.kim
+
+	msm_csid_reset(csid_dev);
+
+//QCT patch S, Fix_CSI_IRQ, 2012-05-03, freeso.kim
+#if 0
 	return 0;
+#else
+	return rc;
+#endif
+//QCT patch E, Fix_CSI_IRQ, 2012-05-03, freeso.kim
 
 clk_enable_failed:
 	msm_camera_enable_vreg(&csid_dev->pdev->dev, csid_vreg_info,
@@ -206,9 +233,13 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 	struct csid_device *csid_dev;
 	csid_dev = v4l2_get_subdevdata(sd);
 
-#if DBG_CSID
+//QCT patch S, Fix_CSI_IRQ, 2012-05-03, freeso.kim
+#if 0
 	disable_irq(csid_dev->irq->start);
+#else
+	free_irq(csid_dev->irq->start, csid_dev);
 #endif
+//QCT patch E, Fix_CSI_IRQ, 2012-05-03, freeso.kim
 
 	msm_cam_clk_enable(&csid_dev->pdev->dev, csid_clk_info,
 		csid_dev->csid_clk, ARRAY_SIZE(csid_clk_info), 0);
@@ -296,8 +327,11 @@ static int __devinit csid_probe(struct platform_device *pdev)
 		goto csid_no_resource;
 	}
 
+//QCT patch S, Fix_CSI_IRQ, 2012-05-03, freeso.kim
+#if 0
 	rc = request_irq(new_csid_dev->irq->start, msm_csid_irq,
 		IRQF_TRIGGER_RISING, "csid", new_csid_dev);
+
 	if (rc < 0) {
 		release_mem_region(new_csid_dev->mem->start,
 			resource_size(new_csid_dev->mem));
@@ -306,6 +340,8 @@ static int __devinit csid_probe(struct platform_device *pdev)
 		goto csid_no_resource;
 	}
 	disable_irq(new_csid_dev->irq->start);
+#endif
+//QCT patch E, Fix_CSI_IRQ, 2012-05-03, freeso.kim
 
 	new_csid_dev->pdev = pdev;
 	return 0;

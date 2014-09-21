@@ -24,7 +24,15 @@
 #define SECTION_SIZE_BITS 28
 
 /* Maximum number of Memory Regions */
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE: If use 2GB memory, region is 8
+ * 2012-01-02, bongkyu.kim@lge.com
+ */
+#define MAX_NR_REGIONS 8
+#else
 #define MAX_NR_REGIONS 4
+#endif
+
 
 /* Certain configurations of MSM7x30 have multiple memory banks.
 *  One or more of these banks can contain holes in the memory map as well.
@@ -88,7 +96,13 @@ extern void l2x0_cache_sync(void);
 
 #if defined(CONFIG_ARCH_MSM8X60) || defined(CONFIG_ARCH_MSM8960)
 extern void store_ttbr0(void);
+#ifdef CONFIG_LGE_HANDLE_PANIC
+extern void store_ctrl(void);
+extern void store_dac(void);
+#define finish_arch_switch(prev)	do { store_ttbr0(); store_dac(); store_ctrl();}  while (0)
+#else
 #define finish_arch_switch(prev)	do { store_ttbr0(); } while (0)
+#endif
 #endif
 
 #ifdef CONFIG_DONT_MAP_HOLE_AFTER_MEMBANK0

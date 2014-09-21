@@ -51,11 +51,39 @@ extern struct platform_device msm_device_uart_dm6;
 
 extern struct platform_device msm8960_device_uart_gsbi2;
 extern struct platform_device msm8960_device_uart_gsbi5;
+/* 20111112, chaeuk.lee@lge.com, Add FeliCa UART [START] */
+#ifdef CONFIG_LGE_FELICA
+extern struct platform_device msm8960_device_uart_gsbi8;
+#endif
+/* 20111112, chaeuk.lee@lge.com, Add FeliCa UART [END] */
+/* 20111205, chaeuk.lee@lge.com, Add IrDA UART [START] */
+#ifdef CONFIG_LGE_IRDA
+extern struct platform_device msm8960_device_irda_gsbi9;
+#endif
+/* 20111205, chaeuk.lee@lge.com, Add IrDA UART [END] */
 extern struct platform_device msm8960_device_ssbi_pmic;
 extern struct platform_device msm8960_device_qup_i2c_gsbi3;
 extern struct platform_device msm8960_device_qup_i2c_gsbi4;
+#ifdef CONFIG_LGE_AUDIO_TPA2028D                                                
+/* Add the I2C driver for Audio Amp, ehgrace.kim@lge.com, 06/13/2011 */ 
+extern struct platform_device msm8960_device_qup_i2c_gsbi9;
+#endif
+/* Add the JP-1Seg and KR-TDMB gsbi10 for spi taewook.kang@lge.com 11/29/2011 */
+#if defined(CONFIG_LGE_BROADCAST_1SEG) || defined(CONFIG_LGE_BROADCAST_TDMB)
+extern struct platform_device msm8960_device_qup_spi_gsbi10;
+#else
 extern struct platform_device msm8960_device_qup_i2c_gsbi10;
+#endif /* CONFIG_LGE_BROADCAST */
+/* Add the JP-1Seg and KR-TDMB gsbi10 for spi taewook.kang@lge.com 11/29/2011 */
 extern struct platform_device msm8960_device_qup_i2c_gsbi12;
+#ifdef CONFIG_MACH_LGE
+extern struct platform_device msm8960_device_qup_i2c_gsbi1;
+extern struct platform_device msm8960_device_qup_i2c_gsbi2;
+extern struct platform_device msm8960_device_qup_i2c_gsbi5;
+extern struct platform_device msm8960_device_qup_i2c_gsbi7;
+extern struct platform_device msm8960_device_qup_i2c_gsbi8;
+extern struct platform_device msm8960_device_qup_i2c_gsbi9;
+#endif
 extern struct platform_device msm8960_device_qup_spi_gsbi1;
 extern struct platform_device msm8960_gemini_device;
 extern struct platform_device msm8960_device_csiphy0;

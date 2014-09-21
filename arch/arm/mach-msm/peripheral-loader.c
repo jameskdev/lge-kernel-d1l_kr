@@ -250,6 +250,7 @@ void *pil_get(const char *name)
 	struct pil_device *pil;
 	struct pil_device *pil_d;
 	void *retval;
+	int retries = 0;
 
 	/* PIL is not yet supported on 8064. */
 	if (cpu_is_apq8064())
@@ -272,7 +273,15 @@ void *pil_get(const char *name)
 		goto unlock;
 	}
 
-	ret = load_image(pil);
+	if (!strcmp(pil->desc->name, "wcnss")) {
+		for (retries = 0; retries < 2; retries ++) {			
+			ret = load_image(pil);
+			dev_info(pil->desc->dev, "WCNSS image load retries : %d ret :%d\n",retries, ret);
+			if (ret == 0) break;
+		}
+	} else {		
+		ret = load_image(pil);
+	}
 	if (ret) {
 		retval = ERR_PTR(ret);
 		goto unlock;

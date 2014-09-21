@@ -1,4 +1,5 @@
 /* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+#
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,7 +33,13 @@
 #include "mdp4.h"
 #include "mipi_dsi.h"
 
+#ifdef CONFIG_LGE_HIDDEN_RESET
+#include <mach/board_lge.h>
+#endif
+
 #define DSI_VIDEO_BASE	0xE0000
+
+#define QCT_PATCH
 
 static int first_pixel_start_x;
 static int first_pixel_start_y;
@@ -123,6 +130,10 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	buf += fbi->var.xoffset * bpp +
 		fbi->var.yoffset * fbi->fix.line_length;
 
+#ifdef CONFIG_LGE_HIDDEN_RESET
+	if (on_hidden_reset)
+		buf = (uint8 *)lge_get_hreset_fb_phys_addr();
+#endif
 	if (dsi_pipe == NULL) {
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
@@ -150,6 +161,10 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	} else {
 		pipe = dsi_pipe;
 	}
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+	pipe->mfd = mfd;
+#endif
 
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
@@ -264,7 +279,13 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE + 0x2c, dsi_underflow_clr);
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE + 0x30, dsi_hsync_skew);
 	MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE + 0x38, ctrl_polarity);
+	/* LGE_CHANGE
+	 * Add QCT patches for blue screen issue after 1041 patches
+	 * 2012-03-15, baryun.hwang@lge.com
+	 */
+#ifdef QCT_PATCH
 	mdp4_overlay_reg_flush(pipe, 1);
+#endif
 	mdp_histogram_ctrl_all(TRUE);
 
 	ret = panel_next_on(pdev);
@@ -626,6 +647,14 @@ static void mdp4_dsi_video_do_blt(struct msm_fb_data_type *mfd, int enable)
 			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
 		}
 		mipi_dsi_sw_reset();
+		/* LGE_UPDATE_S, 2012-04-23, jamin.koo@lge.com
+		 * Displaying corrupted or blank image while playing only for HD or Full HD contents
+		 * SR #00826773
+		 */
+#ifdef CONFIG_MACH_LGE
+		msleep(5);
+#endif
+		/* LGE_UPDATE_E */
 		mipi_dsi_controller_cfg(1);
 		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);
 	}
@@ -674,6 +703,10 @@ void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
 	buf += fbi->var.xoffset * bpp +
 		fbi->var.yoffset * fbi->fix.line_length;
 
+#ifdef CONFIG_LGE_HIDDEN_RESET
+	if (on_hidden_reset)
+		buf = (uint8 *)lge_get_hreset_fb_phys_addr();
+#endif
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	pipe = dsi_pipe;

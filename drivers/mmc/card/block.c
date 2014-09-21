@@ -961,6 +961,17 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 
 		mmc_queue_bounce_post(mq);
 
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE
+		* Don't redo I/O when ENOMEDIUM error.
+		* 2011-11-10, warkap.seo@lge.com
+		*/
+		if (brq.cmd.error == -ENOMEDIUM) {
+			printk(KERN_INFO "[LGE][MMC][%-18s( )] brq.cmd.error:ENOMEDIUM, skip below\n", __func__);
+			goto cmd_err;
+		}
+#endif
+
 		/*
 		 * sbc.error indicates a problem with the set block count
 		 * command.  No data will have been transferred.
@@ -1087,7 +1098,19 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 	if (mmc_card_removed(card))
 		req->cmd_flags |= REQ_QUIET;
 	while (ret)
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE
+		* supressed the error message.
+		* 2011-11-10, warkap.seo@lge.com
+		*/
+		{
+			req->cmd_flags |= REQ_QUIET;
+			ret = __blk_end_request(req, -EIO, blk_rq_cur_bytes(req));
+		}
+#else
 		ret = __blk_end_request(req, -EIO, blk_rq_cur_bytes(req));
+#endif
+
 	spin_unlock_irq(&md->lock);
 
 	return 0;

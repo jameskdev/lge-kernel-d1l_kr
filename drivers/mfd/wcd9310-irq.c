@@ -256,28 +256,30 @@ int tabla_irq_init(struct tabla *tabla)
 			tabla->irq_masks_cur[i]);
 	}
 
-	ret = request_threaded_irq(tabla->irq, NULL, tabla_irq_thread,
-				   IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
-				   "tabla", tabla);
-	if (ret != 0)
+	/* CONFIG_LGE_AUDIO
+	 * 2011-12-29, junday.lee@lge.com
+	 * Enable MBHC sleep hook event. Patched by joint lap
+	 */
+	if ((ret = request_threaded_irq(tabla->irq, NULL, tabla_irq_thread,
+					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					"tabla", tabla)))
 		dev_err(tabla->dev, "Failed to request IRQ %d: %d\n",
 			tabla->irq, ret);
 	else {
-		ret = enable_irq_wake(tabla->irq);
-		if (ret == 0) {
-			ret = device_init_wakeup(tabla->dev, 1);
-			if (ret) {
+		if ((ret = enable_irq_wake(tabla->irq)) == 0) {
+			if ((ret = device_init_wakeup(tabla->dev, 1))) {
 				dev_err(tabla->dev, "Failed to init device"
 					"wakeup : %d\n", ret);
 				disable_irq_wake(tabla->irq);
 			}
-		} else
+		} else {
 			dev_err(tabla->dev, "Failed to set wake interrupt on"
 				" IRQ %d: %d\n", tabla->irq, ret);
+		}
 		if (ret)
 			free_irq(tabla->irq, tabla);
-	}
 
+	}
 	if (ret)
 		mutex_destroy(&tabla->irq_lock);
 
@@ -286,6 +288,7 @@ int tabla_irq_init(struct tabla *tabla)
 
 void tabla_irq_exit(struct tabla *tabla)
 {
+
 	if (tabla->irq) {
 		disable_irq_wake(tabla->irq);
 		free_irq(tabla->irq, tabla);

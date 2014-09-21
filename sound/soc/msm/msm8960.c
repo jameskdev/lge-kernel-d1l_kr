@@ -29,7 +29,16 @@
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
 
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+	/* Add the I2C driver for Audio Amp, ehgrace.kim@lge.cim, 06/13/2011 */
+#include <sound/tpa2028d.h>
+#endif
 /* 8960 machine driver */
+
+#if defined(CONFIG_SWITCH_FSA8008)
+/* For D1La/D1Lv RevA, RevB using fas8008 headset driver, junday.lee@lge.com */
+#include "../../../arch/arm/mach-msm/include/mach/board_lge.h"
+#endif
 
 #define PM8921_GPIO_BASE		NR_GPIO_IRQS
 #define PM8921_GPIO_PM_TO_SYS(pm_gpio)  (pm_gpio - 1 + PM8921_GPIO_BASE)
@@ -61,8 +70,12 @@
 static u32 top_spk_pamp_gpio  = PM8921_GPIO_PM_TO_SYS(18);
 static u32 bottom_spk_pamp_gpio = PM8921_GPIO_PM_TO_SYS(19);
 static int msm8960_spk_control;
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+/*20111005 tarzan.park@lge.com   not using code block  */
+#else
 static int msm8960_ext_bottom_spk_pamp;
 static int msm8960_ext_top_spk_pamp;
+#endif
 static int msm8960_slim_0_rx_ch = 1;
 static int msm8960_slim_0_tx_ch = 1;
 
@@ -78,6 +91,10 @@ static struct snd_soc_jack hs_jack;
 static struct snd_soc_jack button_jack;
 
 static void *tabla_mbhc_cal;
+
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+/*20111007 tarzan.park@lge.com not using code block   */
+#else
 
 static void msm8960_enable_ext_spk_amp_gpio(u32 spk_amp_gpio)
 {
@@ -221,12 +238,19 @@ static void msm8960_ext_spk_power_amp_off(u32 spk)
 		return;
 	}
 }
+#endif
 
 static void msm8960_ext_control(struct snd_soc_codec *codec)
 {
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 
 	pr_debug("%s: msm8960_spk_control = %d", __func__, msm8960_spk_control);
+#if defined(CONFIG_LGE_AUDIO_TPA2028D)
+	if (msm8960_spk_control == MSM8960_SPK_ON)
+		snd_soc_dapm_enable_pin(dapm, "Ext Spk");
+	else
+		snd_soc_dapm_disable_pin(dapm, "Ext Spk");
+#else
 	if (msm8960_spk_control == MSM8960_SPK_ON) {
 		snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Pos");
 		snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Neg");
@@ -238,7 +262,7 @@ static void msm8960_ext_control(struct snd_soc_codec *codec)
 		snd_soc_dapm_disable_pin(dapm, "Ext Spk Top Pos");
 		snd_soc_dapm_disable_pin(dapm, "Ext Spk Top Neg");
 	}
-
+#endif
 	snd_soc_dapm_sync(dapm);
 }
 
@@ -267,6 +291,15 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 {
 	pr_debug("%s() %x\n", __func__, SND_SOC_DAPM_EVENT_ON(event));
 
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+	/*201101007 tarzan.park@lge.com add amp power function */
+	printk(KERN_DEBUG "spk amp event");
+	if (SND_SOC_DAPM_EVENT_ON(event))
+		set_amp_gain(MSM8960_SPK_ON);
+	else
+		set_amp_gain(MSM8960_SPK_OFF);
+	return 0;
+#else
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
 		if (!strncmp(w->name, "Ext Spk Bottom Pos", 18))
 			msm8960_ext_spk_power_amp_on(BOTTOM_SPK_AMP_POS);
@@ -298,7 +331,50 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 		}
 	}
 	return 0;
+#endif
 }
+
+#ifdef CONFIG_SWITCH_FSA8008
+int msm8960_enable_codec_ext_clk( struct snd_soc_codec *codec,
+    enum tabla_mclk_bg_state mclk_bg_state)
+{
+       pr_info("%s: mclk_bg_state = %d\n", __func__,
+        mclk_bg_state);
+       if (mclk_bg_state == MCLK_ON_BANDGAP_ON) {
+
+		clk_users++;
+		pr_debug("%s: clk_users = %d\n", __func__, clk_users);
+		if (clk_users != 1)
+			return 0;
+
+		codec_clk = clk_get(NULL, "i2s_spkr_osr_clk");
+		if (codec_clk) {
+			clk_set_rate(codec_clk, TABLA_EXT_CLK_RATE);
+			clk_enable(codec_clk);
+			tabla_mclk_enable(codec, mclk_bg_state);
+		} else {
+			pr_err("%s: Error setting Tabla MCLK\n", __func__);
+			clk_users--;
+			return -EINVAL;
+		}
+    } else if ((mclk_bg_state == MCLK_OFF_BANDGAP_OFF) ||
+        (mclk_bg_state == MCLK_OF_BANDGAP_ON)){
+    pr_info("%s: clk_users = %d\n", __func__, clk_users);
+
+		if (clk_users == 0)
+			return 0;
+		clk_users--;
+		if (!clk_users) {
+			pr_debug("%s: disabling MCLK. clk_users = %d\n",
+					 __func__, clk_users);
+			clk_disable(codec_clk);
+			clk_put(codec_clk);
+			tabla_mclk_enable(codec, mclk_bg_state);
+		}
+	}
+	return 0;
+}
+#else
 int msm8960_enable_codec_ext_clk(
 		struct snd_soc_codec *codec, int enable)
 {
@@ -334,6 +410,7 @@ int msm8960_enable_codec_ext_clk(
 	}
 	return 0;
 }
+#endif
 
 static int msm8960_mclk_event(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
@@ -354,12 +431,15 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY("MCLK",  SND_SOC_NOPM, 0, 0,
 	msm8960_mclk_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+	SND_SOC_DAPM_SPK("Ext Spk", msm8960_spkramp_event),
+#else
 	SND_SOC_DAPM_SPK("Ext Spk Bottom Pos", msm8960_spkramp_event),
 	SND_SOC_DAPM_SPK("Ext Spk Bottom Neg", msm8960_spkramp_event),
 
 	SND_SOC_DAPM_SPK("Ext Spk Top Pos", msm8960_spkramp_event),
 	SND_SOC_DAPM_SPK("Ext Spk Top Neg", msm8960_spkramp_event),
-
+#endif
 	SND_SOC_DAPM_MIC("Handset Mic", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
@@ -372,27 +452,44 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic6", NULL),
-
+#if defined(CONFIG_LGE_AUDIO)
+	SND_SOC_DAPM_MIC("Handset SubMic", NULL),
+#endif
 };
 
 static const struct snd_soc_dapm_route common_audio_map[] = {
 
 	{"RX_BIAS", NULL, "MCLK"},
 	{"LDO_H", NULL, "MCLK"},
-
+#if defined(CONFIG_LGE_AUDIO_TPA2028D)
+	{"Ext Spk", NULL, "LINEOUT1"},
+#else
 	/* Speaker path */
 	{"Ext Spk Bottom Pos", NULL, "LINEOUT1"},
 	{"Ext Spk Bottom Neg", NULL, "LINEOUT3"},
 
 	{"Ext Spk Top Pos", NULL, "LINEOUT2"},
 	{"Ext Spk Top Neg", NULL, "LINEOUT4"},
+#endif
 
+#if defined(CONFIG_LGE_AUDIO)
+	/* Microphone path */
+	{"AMIC1", NULL, "MIC BIAS1 External"},
+	{"MIC BIAS1 External", NULL, "Handset Mic"},
+#else
 	/* Microphone path */
 	{"AMIC1", NULL, "MIC BIAS1 Internal1"},
 	{"MIC BIAS1 Internal1", NULL, "Handset Mic"},
 
+#endif
+
+#ifdef CONFIG_SWITCH_FSA8008
+	{"AMIC2", NULL, "LDO_H"},
+	{"MIC BIAS2 External", NULL, "Headset Mic"},
+#else
 	{"AMIC2", NULL, "MIC BIAS2 External"},
 	{"MIC BIAS2 External", NULL, "Headset Mic"},
+#endif
 
 	/**
 	 * AMIC3 and AMIC4 inputs are connected to ANC microphones
@@ -400,6 +497,9 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 	 * routing entries below are based on bias arrangement
 	 * on FLUID.
 	 */
+	{"HEADPHONE", NULL, "LDO_H"},
+//by ehgrace.kim@lge.com
+#ifndef CONFIG_LGE_AUDIO
 	{"AMIC3", NULL, "MIC BIAS3 Internal1"},
 	{"MIC BIAS3 Internal1", NULL, "ANCRight Headset Mic"},
 
@@ -458,7 +558,16 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 	 */
 	{"DMIC6", NULL, "MIC BIAS4 External"},
 	{"MIC BIAS4 External", NULL, "Digital Mic6"},
+#endif
 };
+
+#if defined(CONFIG_LGE_AUDIO)
+	/* enable handset sub mic, ehgrace.kim@lge.cim, 08/15/2011 */
+static const struct snd_soc_dapm_route handset_submic_audio_map[] = {
+	{"AMIC3", NULL, "MIC BIAS3 External"},
+	{"MIC BIAS3 External", NULL, "Handset SubMic"},
+};
+#endif
 
 static const char *spk_function[] = {"Off", "On"};
 static const char *slim0_rx_ch_text[] = {"One", "Two"};
@@ -669,10 +778,19 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_add_routes(dapm, common_audio_map,
 		ARRAY_SIZE(common_audio_map));
 
+#ifdef CONFIG_LGE_AUDIO
+	snd_soc_dapm_add_routes(dapm, handset_submic_audio_map,
+		ARRAY_SIZE(handset_submic_audio_map));
+#endif
+
+#ifdef CONFIG_LGE_AUDIO_TPA2028D
+	snd_soc_dapm_enable_pin(dapm, "Ext Spk");
+#else
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Pos");
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Bottom Neg");
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Top Pos");
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk Top Neg");
+#endif
 
 	snd_soc_dapm_sync(dapm);
 
@@ -692,9 +810,26 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return err;
 	}
 
+/*
+ * If using fsa8008 headset driver,
+ * disable the qualcomm configuration
+ * ehgrace.kim@lge.cim, 08/07/2011
+*/
+#ifdef CONFIG_SWITCH_FSA8008
+	if(lge_get_board_usembhc()) /*MBHC*/
+		tabla_hs_detect(codec, &hs_jack, &button_jack, tabla_mbhc_cal,
+			TABLA_MICBIAS2, msm8960_enable_codec_ext_clk, 0,
+			TABLA_EXT_CLK_RATE);
+	else /*FSA8008*/
+	{
+		tabla_register_mclk_call_back(codec, msm8960_enable_codec_ext_clk);
+        //snd_soc_dapm_force_enable_pin(dapm, "MIC BIAS2 Power External");
+	}
+#else /*MBHC*/
 	err = tabla_hs_detect(codec, &hs_jack, &button_jack, tabla_mbhc_cal,
 			      TABLA_MICBIAS2, msm8960_enable_codec_ext_clk, 0,
 			      TABLA_EXT_CLK_RATE);
+#endif
 
 	return err;
 }
@@ -778,6 +913,8 @@ static int msm8960_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+/* LGE_UPDATE 20120219 add feature for non-hdmi device */
+#ifdef CONFIG_SND_SOC_MSM_QDSP6_HDMI_AUDIO
 static int msm8960_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					struct snd_pcm_hw_params *params)
 {
@@ -794,6 +931,7 @@ static int msm8960_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	return 0;
 }
+#endif
 
 static int msm8960_btsco_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					struct snd_pcm_hw_params *params)
@@ -1090,6 +1228,9 @@ static struct snd_soc_dai_link msm8960_dai_common[] = {
 		.be_id = MSM_BACKEND_DAI_INT_FM_TX,
 		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
 	},
+
+/* LGE_UPDATE 20120219 add feature for non-hdmi device */
+#ifdef CONFIG_SND_SOC_MSM_QDSP6_HDMI_AUDIO
 	/* HDMI BACK END DAI Link */
 	{
 		.name = LPASS_BE_HDMI,
@@ -1103,6 +1244,7 @@ static struct snd_soc_dai_link msm8960_dai_common[] = {
 		.be_id = MSM_BACKEND_DAI_HDMI_RX,
 		.be_hw_params_fixup = msm8960_hdmi_be_hw_params_fixup,
 	},
+#endif
 	/* Backend AFE DAI Links */
 	{
 		.name = LPASS_BE_AFE_PCM_RX,
@@ -1220,7 +1362,6 @@ static struct snd_soc_dai_link msm8960_dai_delta_tabla1x[] = {
 	},
 };
 
-
 static struct snd_soc_dai_link msm8960_dai_delta_tabla2x[] = {
 	/* Backend DAI Links */
 	{
@@ -1253,7 +1394,6 @@ static struct snd_soc_dai_link msm8960_dai_delta_tabla2x[] = {
 static struct snd_soc_dai_link msm8960_tabla1x_dai[
 					 ARRAY_SIZE(msm8960_dai_common) +
 					 ARRAY_SIZE(msm8960_dai_delta_tabla1x)];
-
 
 static struct snd_soc_dai_link msm8960_dai[
 					 ARRAY_SIZE(msm8960_dai_common) +
@@ -1317,11 +1457,26 @@ static int msm8960_configure_headset_mic_gpios(void)
 
 	return 0;
 }
+
 static void msm8960_free_headset_mic_gpios(void)
 {
+/*
+ * If using fsa8008 headset driver,
+ * disable the qualcomm configuration
+ * ehgrace.kim@lge.cim, 08/07/2011
+ */
 	if (msm8960_headset_gpios_configured) {
-		gpio_free(PM8921_GPIO_PM_TO_SYS(23));
-		gpio_free(PM8921_GPIO_PM_TO_SYS(35));
+
+#ifdef CONFIG_SWITCH_FSA8008
+		if(lge_get_board_usembhc()) /*MBHC*/
+		{
+			gpio_free(PM8921_GPIO_PM_TO_SYS(23));
+			gpio_free(PM8921_GPIO_PM_TO_SYS(35));
+		}
+#else /*MBHC*/
+	gpio_free(PM8921_GPIO_PM_TO_SYS(23));
+	gpio_free(PM8921_GPIO_PM_TO_SYS(35));
+#endif
 	}
 }
 
@@ -1365,7 +1520,7 @@ static int __init msm8960_audio_init(void)
 		kfree(tabla_mbhc_cal);
 		return -ENOMEM;
 	}
-
+	
 	memcpy(msm8960_tabla1x_dai, msm8960_dai_common,
 		sizeof(msm8960_dai_common));
 	memcpy(msm8960_tabla1x_dai + ARRAY_SIZE(msm8960_dai_common),
@@ -1380,11 +1535,29 @@ static int __init msm8960_audio_init(void)
 		return ret;
 	}
 
+/*
+ * If using fsa8008 headset driver,
+ * disable the qualcomm configuration
+ * ehgrace.kim@lge.cim, 08/07/2011
+*/
+#ifdef CONFIG_SWITCH_FSA8008
+	if(lge_get_board_usembhc()) /*MBHC*/
+	{
+		if (msm8960_configure_headset_mic_gpios()) {
+			pr_err("%s Fail to configure headset mic gpios\n", __func__);
+			msm8960_headset_gpios_configured = 0;
+		} else
+			msm8960_headset_gpios_configured = 1;
+	} else {  /*FSA8008*/
+		msm8960_headset_gpios_configured = 1;
+	}
+#else /*MBHC*/
 	if (msm8960_configure_headset_mic_gpios()) {
 		pr_err("%s Fail to configure headset mic gpios\n", __func__);
 		msm8960_headset_gpios_configured = 0;
 	} else
 		msm8960_headset_gpios_configured = 1;
+#endif
 
 	return ret;
 

@@ -21,6 +21,9 @@
 #include <linux/diagchar.h>
 #include <linux/delay.h>
 #include <linux/reboot.h>
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+#include <linux/spinlock.h>
+#endif
 #ifdef CONFIG_DIAG_OVER_USB
 #include <mach/usbdiag.h>
 #endif
@@ -37,6 +40,15 @@
 #endif
 #define MODE_CMD	41
 #define RESET_ID	2
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+#define ALL_EQUIP_ID		100
+#define ALL_SSID		-1
+#define MAX_SSID_PER_RANGE	100
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
+
+#ifdef CONFIG_LGE_DM_APP
+#include "lg_dm_tty.h"
+#endif
 
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
@@ -52,6 +64,23 @@ struct mask_info {
 	int num_items;
 	int index;
 };
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+spinlock_t diag_cntl_lock;
+
+#define CREATE_MSG_MASK_TBL_ROW(XX)					\
+do {									\
+	*(int *)(msg_mask_tbl_ptr) = MSG_SSID_ ## XX;			\
+	msg_mask_tbl_ptr += 4;						\
+	*(int *)(msg_mask_tbl_ptr) = MSG_SSID_ ## XX ## _LAST;		\
+	msg_mask_tbl_ptr += 4;						\
+	/* increment by MAX_SSID_PER_RANGE cells */			\
+	msg_mask_tbl_ptr += MAX_SSID_PER_RANGE * sizeof(int);		\
+} while (0)
+#else
+#ifdef CONFIG_MACH_LGE
+spinlock_t diag_cntl_lock;
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 #define ENCODE_RSP_AND_SEND(buf_length)				\
 do {									\
@@ -291,6 +320,32 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 		APPEND_DEBUG('d');
 	}
 #endif /* DIAG OVER USB */
+
+#ifdef CONFIG_LGE_DM_APP
+	if (driver->logging_mode == DM_APP_MODE) {
+		if (proc_num == APPS_DATA) {
+			for (i = 0; i < driver->poolsize_write_struct; i++) {
+				if (driver->buf_tbl[i].length == 0) {
+					driver->buf_tbl[i].buf = buf;
+					driver->buf_tbl[i].length =
+					driver->used;
+#ifdef DIAG_DEBUG
+					pr_debug("diag: ENQUEUE buf ptr"
+					   " and length is %x , %d\n",
+					   (unsigned int)(driver->
+					   buf_tbl[i].buf),
+					   driver->buf_tbl[i].length);
+#endif
+
+				break;
+				}
+			}
+		}
+			lge_dm_tty->set_logging = 1;
+			wake_up_interruptible(&lge_dm_tty->waitq);
+	}
+#endif
+
     return err;
 }
 
@@ -381,7 +436,9 @@ static void diag_print_mask_table(void)
 	int last;
 	uint8_t *ptr = driver->msg_masks;
 	int i = 0;
-
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	pr_info("diag: F3 message mask table\n");
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	while (*(uint32_t *)(ptr + 4)) {
 		first = *(uint32_t *)ptr;
 		ptr += 4;
@@ -390,11 +447,67 @@ static void diag_print_mask_table(void)
 		printk(KERN_INFO "SSID %d - %d\n", first, last);
 		for (i = 0 ; i <= last - first ; i++)
 			printk(KERN_INFO "MASK:%x\n", *((uint32_t *)ptr + i));
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+		ptr += MAX_SSID_PER_RANGE*4;
+#else
 		ptr += ((last - first) + 1)*4;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 	}
 #endif
 }
+
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+void diag_create_msg_mask_table(void)
+{
+	uint8_t *msg_mask_tbl_ptr = driver->msg_masks;
+	CREATE_MSG_MASK_TBL_ROW(0);
+	CREATE_MSG_MASK_TBL_ROW(1);
+	CREATE_MSG_MASK_TBL_ROW(2);
+	CREATE_MSG_MASK_TBL_ROW(3);
+	CREATE_MSG_MASK_TBL_ROW(4);
+	CREATE_MSG_MASK_TBL_ROW(5);
+	CREATE_MSG_MASK_TBL_ROW(6);
+	CREATE_MSG_MASK_TBL_ROW(7);
+	CREATE_MSG_MASK_TBL_ROW(8);
+	CREATE_MSG_MASK_TBL_ROW(9);
+	CREATE_MSG_MASK_TBL_ROW(10);
+	CREATE_MSG_MASK_TBL_ROW(11);
+	CREATE_MSG_MASK_TBL_ROW(12);
+	CREATE_MSG_MASK_TBL_ROW(13);
+	CREATE_MSG_MASK_TBL_ROW(14);
+	CREATE_MSG_MASK_TBL_ROW(15);
+	CREATE_MSG_MASK_TBL_ROW(16);
+	CREATE_MSG_MASK_TBL_ROW(17);
+	CREATE_MSG_MASK_TBL_ROW(18);
+	CREATE_MSG_MASK_TBL_ROW(19);
+	CREATE_MSG_MASK_TBL_ROW(20);
+	CREATE_MSG_MASK_TBL_ROW(21);
+	CREATE_MSG_MASK_TBL_ROW(22);
+}
+
+static void diag_set_msg_mask(int rt_mask)
+{
+	int first_ssid, last_ssid, i;
+	uint8_t *parse_ptr, *ptr = driver->msg_masks;
+
+	mutex_lock(&driver->diagchar_mutex);
+	while (*(uint32_t *)(ptr + 4)) {
+		first_ssid = *(uint32_t *)ptr;
+		ptr += 4;
+		last_ssid = *(uint32_t *)ptr;
+		ptr += 4;
+		parse_ptr = ptr;
+		pr_debug("diag: updating range %d %d\n", first_ssid, last_ssid);
+		for (i = 0; i < last_ssid - first_ssid + 1; i++) {
+			*(int *)parse_ptr = rt_mask;
+			parse_ptr += 4;
+		}
+		ptr += MAX_SSID_PER_RANGE * 4;
+	}
+	mutex_unlock(&driver->diagchar_mutex);
+}
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 static void diag_update_msg_mask(int start, int end , uint8_t *buf)
 {
@@ -418,9 +531,17 @@ static void diag_update_msg_mask(int start, int end , uint8_t *buf)
 			if (end <= last)
 				if (CHK_OVERFLOW(ptr_buffer_start, ptr,
 						  ptr_buffer_end,
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+						  (((end - start)+1)*4))) {
+					pr_debug("diag: update ssid start %d,"
+						 " end %d\n", start, end);
+					memcpy(ptr, buf , ((end - start)+1)*4);
+				} else
+#else
 						  (((end - start)+1)*4)))
 					memcpy(ptr, buf , ((end - start)+1)*4);
 				else
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 					printk(KERN_CRIT "Not enough"
 							 " buffer space for"
 							 " MSG_MASK\n");
@@ -431,7 +552,11 @@ static void diag_update_msg_mask(int start, int end , uint8_t *buf)
 			found = 1;
 			break;
 		} else {
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			ptr += MAX_SSID_PER_RANGE*4;
+#else
 			ptr += ((last - first) + 1)*4;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		}
 	}
 	/* Entry was not found - add new table */
@@ -442,6 +567,10 @@ static void diag_update_msg_mask(int start, int end , uint8_t *buf)
 			ptr += 4;
 			memcpy(ptr, &(end), 4);
 			ptr += 4;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			pr_debug("diag: adding NEW ssid start %d, end %d\n",
+								 start, end);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 			memcpy(ptr, buf , ((end - start) + 1)*4);
 		} else
 			printk(KERN_CRIT " Not enough buffer"
@@ -451,6 +580,20 @@ static void diag_update_msg_mask(int start, int end , uint8_t *buf)
 	diag_print_mask_table();
 
 }
+
+#ifdef CONFIG_MACH_LGE
+void diag_toggle_event_mask(int toggle)
+{
+	uint8_t *ptr = driver->event_masks;
+
+	mutex_lock(&driver->diagchar_mutex);
+	if (toggle)
+		memset(ptr, 0xFF, EVENT_MASK_SIZE);
+	else
+		memset(ptr, 0, EVENT_MASK_SIZE);
+	mutex_unlock(&driver->diagchar_mutex);
+}
+#endif
 
 static void diag_update_event_mask(uint8_t *buf, int toggle, int num_bytes)
 {
@@ -470,13 +613,39 @@ static void diag_update_event_mask(uint8_t *buf, int toggle, int num_bytes)
 	mutex_unlock(&driver->diagchar_mutex);
 }
 
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+static void diag_disable_log_mask(void)
+{
+	int i = 0;
+	struct mask_info *parse_ptr = (struct mask_info *)(driver->log_masks);
+
+	pr_debug("diag: disable log masks\n");
+	mutex_lock(&driver->diagchar_mutex);
+	for (i = 0; i < MAX_EQUIP_ID; i++) {
+		pr_debug("diag: equip id %d\n", parse_ptr->equip_id);
+		if (!(parse_ptr->equip_id)) /* Reached a null entry */
+			break;
+		memset(driver->log_masks + parse_ptr->index, 0,
+			    (parse_ptr->num_items + 7)/8);
+		parse_ptr++;
+	}
+	mutex_unlock(&driver->diagchar_mutex);
+}
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
+
 static void diag_update_log_mask(int equip_id, uint8_t *buf, int num_items)
 {
 	uint8_t *temp = buf;
 	int i = 0;
 	unsigned char *ptr_data;
 	int offset = (sizeof(struct mask_info))*MAX_EQUIP_ID;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	struct mask_info *ptr = (struct mask_info *)(driver->log_masks);
+
+	pr_debug("diag: received equip id = %d\n", equip_id);
+#else
 	struct mask_info *ptr = (struct mask_info *)driver->log_masks;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 	mutex_lock(&driver->diagchar_mutex);
 	/* Check if we already know index of this equipment ID */
@@ -501,7 +670,11 @@ static void diag_update_log_mask(int equip_id, uint8_t *buf, int num_items)
 					 + LOG_MASK_SIZE, (num_items+7)/8))
 		memcpy(ptr_data, temp , (num_items+7)/8);
 	else
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+		pr_err("diag: Not enough buffer space for LOG_MASK\n");
+#else
 		printk(KERN_CRIT " Not enough buffer space for LOG_MASK\n");
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	mutex_unlock(&driver->diagchar_mutex);
 }
 
@@ -575,26 +748,45 @@ void diag_send_data(struct diag_master_table entry, unsigned char *buf,
 
 void diag_modem_mask_update_fn(struct work_struct *work)
 {
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	diag_send_msg_mask_update(driver->ch_cntl, ALL_SSID,
+					   ALL_SSID, MODEM_PROC);
+	diag_send_log_mask_update(driver->ch_cntl, ALL_EQUIP_ID);
+#else
 	diag_send_msg_mask_update(driver->ch_cntl);
 	diag_send_log_mask_update(driver->ch_cntl);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	diag_send_event_mask_update(driver->ch_cntl, diag_event_num_bytes);
 }
 
 void diag_qdsp_mask_update_fn(struct work_struct *work)
 {
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	diag_send_msg_mask_update(driver->chqdsp_cntl, ALL_SSID,
+						   ALL_SSID, QDSP_PROC);
+	diag_send_log_mask_update(driver->chqdsp_cntl, ALL_EQUIP_ID);
+#else
 	diag_send_msg_mask_update(driver->chqdsp_cntl);
 	diag_send_log_mask_update(driver->chqdsp_cntl);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	diag_send_event_mask_update(driver->chqdsp_cntl, diag_event_num_bytes);
 }
 
 void diag_wcnss_mask_update_fn(struct work_struct *work)
 {
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	diag_send_msg_mask_update(driver->ch_wcnss_cntl, ALL_SSID,
+						   ALL_SSID, WCNSS_PROC);
+	diag_send_log_mask_update(driver->ch_wcnss_cntl, ALL_EQUIP_ID);
+#else
 	diag_send_msg_mask_update(driver->ch_wcnss_cntl);
 	diag_send_log_mask_update(driver->ch_wcnss_cntl);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	diag_send_event_mask_update(driver->ch_wcnss_cntl,
 						 diag_event_num_bytes);
 }
 
+#if !defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
 void diag_msg_mask_update_fn(struct work_struct *work)
 {
 	diag_send_msg_mask_update(driver->ch_cntl);
@@ -608,13 +800,26 @@ void diag_log_mask_update_fn(struct work_struct *work)
 	diag_send_log_mask_update(driver->chqdsp_cntl);
 	diag_send_log_mask_update(driver->ch_wcnss_cntl);
 }
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+void diag_send_log_mask_update(smd_channel_t *ch, int equip_id)
+#else
 void diag_send_log_mask_update(smd_channel_t *ch)
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 {
 	void *buf = driver->buf_log_mask_update;
 	int header_size = sizeof(struct diag_ctrl_log_mask);
 	struct mask_info *ptr = (struct mask_info *)driver->log_masks;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	int i, size, wr_size = -ENOMEM, retry_count = 0;
+	unsigned long flags = 0;
+#else
 	int i, size;
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+	unsigned long flags = 0;
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 	for (i = 0; i < MAX_EQUIP_ID; i++) {
 		size = (ptr->num_items+7)/8;
@@ -628,11 +833,54 @@ void diag_send_log_mask_update(smd_channel_t *ch)
 		driver->log_mask->status = 3; /* status for valid mask */
 		driver->log_mask->equip_id = ptr->equip_id;
 		driver->log_mask->log_mask_size = size;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+		/* send only desired update, NOT ALL */
+		if (equip_id == ALL_EQUIP_ID || equip_id ==
+					 driver->log_mask->equip_id) {
+			memcpy(buf, driver->log_mask, header_size);
+			memcpy(buf+header_size, driver->log_masks+ptr->index,
+									 size);
+			if (ch) {
+				while (retry_count < 3) {
+					spin_lock_irqsave(&diag_cntl_lock,
+									 flags);
+					wr_size = smd_write(ch, buf,
+							 header_size + size);
+					spin_unlock_irqrestore(&diag_cntl_lock,
+									 flags);
+					if (wr_size == -ENOMEM) {
+						retry_count++;
+						usleep(20000);
+					} else
+						break;
+				}
+				if (wr_size != header_size + size)
+					pr_err("diag: log mask update failed"
+				 " %d, tried %d", wr_size, header_size + size);
+				else
+					pr_debug("diag: updated log equip ID %d"
+					",len %d\n", driver->log_mask->equip_id,
+					 driver->log_mask->log_mask_size);
+			} else
+				pr_err("diag: ch not valid for log update\n");
+		}
+#else
 		memcpy(buf, driver->log_mask, header_size);
 		memcpy(buf+header_size, driver->log_masks+ptr->index, size);
+#ifndef CONFIG_MACH_LGE /* kalbaram - katie chung recommand */
 		msleep(100);
+#endif
+#ifdef CONFIG_MACH_LGE /* kalbaram  - QCTk diag patch */
+		if (ch) {
+			spin_lock_irqsave(&diag_cntl_lock, flags);
+			smd_write(ch, buf, header_size + size);
+			spin_unlock_irqrestore(&diag_cntl_lock, flags);
+		}
+#else
 		if (ch)
 			smd_write(ch, buf, header_size + size);
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		ptr++;
 	}
 }
@@ -641,6 +889,19 @@ void diag_send_event_mask_update(smd_channel_t *ch, int num_bytes)
 {
 	void *buf = driver->buf_event_mask_update;
 	int header_size = sizeof(struct diag_ctrl_event_mask);
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	int wr_size = -ENOMEM, retry_count = 0;
+	unsigned long flags = 0;
+
+	if (num_bytes == 0) {
+		pr_debug("diag: event mask not set yet, so no update\n");
+		return;
+	}
+#else
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+	unsigned long flags = 0;
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 	/* send event mask update */
 	driver->event_mask->cmd_type = DIAG_CTRL_MSG_EVENT_MASK;
@@ -651,28 +912,117 @@ void diag_send_event_mask_update(smd_channel_t *ch, int num_bytes)
 	driver->event_mask->event_mask_size = num_bytes;
 	memcpy(buf, driver->event_mask, header_size);
 	memcpy(buf+header_size, driver->event_masks, num_bytes);
+
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	if (ch) {
+		while (retry_count < 3) {
+			spin_lock_irqsave(&diag_cntl_lock, flags);
+			wr_size = smd_write(ch, buf, header_size + num_bytes);
+			spin_unlock_irqrestore(&diag_cntl_lock, flags);
+			if (wr_size == -ENOMEM) {
+				retry_count++;
+				usleep(20000);
+			} else
+				break;
+		}
+		if (wr_size != header_size + num_bytes)
+			pr_err("diag: error writing event mask %d, tried %d\n",
+					 wr_size, header_size + num_bytes);
+	} else
+		pr_err("diag: ch not valid for event update\n");
+#else
+#ifndef CONFIG_MACH_LGE /* kalbaram - katie chung recommand */
 	msleep(100);
+#endif
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+	if (ch) {
+		spin_lock_irqsave(&diag_cntl_lock, flags);
+		smd_write(ch, buf, header_size + num_bytes);
+		spin_unlock_irqrestore(&diag_cntl_lock, flags);
+	}
+#else /* QCT origin */
 	if (ch)
 		smd_write(ch, buf, header_size + num_bytes);
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 }
 
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+void diag_send_msg_mask_update(smd_channel_t *ch, int updated_ssid_first,
+						int updated_ssid_last, int proc)
+#else
 void diag_send_msg_mask_update(smd_channel_t *ch)
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 {
 	void *buf = driver->buf_msg_mask_update;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	int first, last, size = -ENOMEM, retry_count = 0;
+#else
 	int first, last;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	int header_size = sizeof(struct diag_ctrl_msg_mask);
 	uint8_t *ptr = driver->msg_masks;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	unsigned long flags = 0;
+#else
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+	unsigned long flags = 0;
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 
 	while (*(uint32_t *)(ptr + 4)) {
 		first = *(uint32_t *)ptr;
 		ptr += 4;
 		last = *(uint32_t *)ptr;
 		ptr += 4;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+		if ((updated_ssid_first >= first && updated_ssid_last <= last)
+					 || (updated_ssid_first == ALL_SSID)) {
+			/* send f3 mask update */
+			driver->msg_mask->cmd_type = DIAG_CTRL_MSG_F3_MASK;
+			driver->msg_mask->msg_mask_size = last - first + 1;
+			driver->msg_mask->data_len = 11 +
+					 4 * (driver->msg_mask->msg_mask_size);
+			driver->msg_mask->stream_id = 1; /* 2, if dual stream */
+			driver->msg_mask->status = 3; /* status valid mask */
+			driver->msg_mask->msg_mode = 0; /* Legcay mode */
+			driver->msg_mask->ssid_first = first;
+			driver->msg_mask->ssid_last = last;
+			memcpy(buf, driver->msg_mask, header_size);
+			memcpy(buf+header_size, ptr,
+				 4 * (driver->msg_mask->msg_mask_size));
+			if (ch) {
+				while (retry_count < 3) {
+					spin_lock_irqsave(&diag_cntl_lock,
+									 flags);
+					size = smd_write(ch, buf, header_size +
+					 4*(driver->msg_mask->msg_mask_size));
+					spin_unlock_irqrestore(&diag_cntl_lock,
+									 flags);
+					if (size == -ENOMEM) {
+						retry_count++;
+						usleep(20000);
+					} else
+						break;
+				}
+				if (size != header_size +
+					 4*(driver->msg_mask->msg_mask_size))
+					pr_err("diag:  msg mask update fail %d,"
+							" tried %d\n", size,
+			 header_size + 4*(driver->msg_mask->msg_mask_size));
+				else
+					pr_debug("diag: sending mask update for"
+		" ssid first %d, last %d on PROC %d\n", first, last, proc);
+			} else
+				pr_err("diag: ch invalid msg mask update\n");
+		}
+		ptr += MAX_SSID_PER_RANGE*4;
+#else
 		/* send event mask update */
 		driver->msg_mask->cmd_type = DIAG_CTRL_MSG_F3_MASK;
 		driver->msg_mask->msg_mask_size = last - first + 1;
 		driver->msg_mask->data_len = 11 +
-				 4 * (driver->msg_mask->msg_mask_size);
+			4 * (driver->msg_mask->msg_mask_size);
 		driver->msg_mask->stream_id = 1; /* 2, if dual stream */
 		driver->msg_mask->status = 3; /* status for valid mask */
 		driver->msg_mask->msg_mode = 0; /* Legcay mode */
@@ -680,14 +1030,26 @@ void diag_send_msg_mask_update(smd_channel_t *ch)
 		driver->msg_mask->ssid_last = last;
 		memcpy(buf, driver->msg_mask, header_size);
 		memcpy(buf+header_size, ptr,
-			 4 * (driver->msg_mask->msg_mask_size));
+			4 * (driver->msg_mask->msg_mask_size));
 		/* since mask updates are slow, so sleep needed as to
 		   prevent modem running out of DSM items */
+#ifndef CONFIG_MACH_LGE /* kalbaram - katie chung recommand */
 		msleep(100);
+#endif
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+		if (ch) {
+			spin_lock_irqsave(&diag_cntl_lock, flags);
+			smd_write(ch, buf,
+					header_size + 4*(driver->msg_mask->msg_mask_size));
+			spin_unlock_irqrestore(&diag_cntl_lock, flags);
+		}
+#else
 		if (ch)
 			smd_write(ch, buf,
 			 header_size + 4*(driver->msg_mask->msg_mask_size));
+#endif
 		ptr += ((last - first) + 1)*4;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	}
 }
 
@@ -695,7 +1057,11 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 {
 	uint16_t subsys_cmd_code;
 	int subsys_id, ssid_first, ssid_last, ssid_range;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	int packet_type = 1, i, cmd_code, rt_mask;
+#else
 	int packet_type = 1, i, cmd_code;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	unsigned char *temp = buf;
 	int data_type;
 #if defined(CONFIG_DIAG_OVER_USB)
@@ -717,18 +1083,65 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			payload_length = 8 + ((*(int *)(buf + 4)) + 7)/8;
 			for (i = 0; i < payload_length; i++)
 				*(int *)(driver->apps_rsp_buf+12+i) = *(buf+i);
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			if (driver->ch_cntl)
+				diag_send_log_mask_update(driver->ch_cntl,
+								 *(int *)buf);
+			if (driver->chqdsp_cntl)
+				diag_send_log_mask_update(driver->chqdsp_cntl,
+								 *(int *)buf);
+			if (driver->ch_wcnss_cntl)
+				diag_send_log_mask_update(driver->ch_wcnss_cntl,
+								 *(int *)buf);
+#else
 			queue_work(driver->diag_cntl_wq,
 				 &(driver->diag_log_mask_update_work));
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 			ENCODE_RSP_AND_SEND(12 + payload_length - 1);
 			return 0;
 		} else
 			buf = temp;
 #endif
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	} /* Disable log masks */
+	else if (*buf == 0x73 && *(int *)(buf+4) == 0) {
+		buf += 8;
+		/* Disable mask for each log code */
+		diag_disable_log_mask();
+		diag_update_userspace_clients(LOG_MASKS_TYPE);
+#if defined(CONFIG_DIAG_OVER_USB)
+		if (chk_apps_only()) {
+			driver->apps_rsp_buf[0] = 0x73;
+			driver->apps_rsp_buf[1] = 0x0;
+			driver->apps_rsp_buf[2] = 0x0;
+			driver->apps_rsp_buf[3] = 0x0;
+			*(int *)(driver->apps_rsp_buf + 4) = 0x0;
+			if (driver->ch_cntl)
+				diag_send_log_mask_update(driver->ch_cntl,
+								 *(int *)buf);
+			if (driver->chqdsp_cntl)
+				diag_send_log_mask_update(driver->chqdsp_cntl,
+								 *(int *)buf);
+			if (driver->ch_wcnss_cntl)
+				diag_send_log_mask_update(driver->ch_wcnss_cntl,
+								 *(int *)buf);
+			ENCODE_RSP_AND_SEND(7);
+			return 0;
+		} else
+			buf = temp;
+#endif
+	} /* Set runtime message mask  */
+#else
 	} /* Check for set message mask  */
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	else if ((*buf == 0x7d) && (*(buf+1) == 0x4)) {
 		ssid_first = *(uint16_t *)(buf + 2);
 		ssid_last = *(uint16_t *)(buf + 4);
 		ssid_range = 4 * (ssid_last - ssid_first + 1);
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+		pr_debug("diag: received mask update for ssid_first = %d,"
+				" ssid_last = %d", ssid_first, ssid_last);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 		diag_update_msg_mask(ssid_first, ssid_last , buf + 8);
 		diag_update_userspace_clients(MSG_MASKS_TYPE);
 #if defined(CONFIG_DIAG_OVER_USB)
@@ -736,13 +1149,54 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			for (i = 0; i < 8 + ssid_range; i++)
 				*(driver->apps_rsp_buf + i) = *(buf+i);
 			*(driver->apps_rsp_buf + 6) = 0x1;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			if (driver->ch_cntl)
+				diag_send_msg_mask_update(driver->ch_cntl,
+					 ssid_first, ssid_last, MODEM_PROC);
+			if (driver->chqdsp_cntl)
+				diag_send_msg_mask_update(driver->chqdsp_cntl,
+					 ssid_first, ssid_last, QDSP_PROC);
+			if (driver->ch_wcnss_cntl)
+				diag_send_msg_mask_update(driver->ch_wcnss_cntl,
+					 ssid_first, ssid_last, WCNSS_PROC);
+#else
 			queue_work(driver->diag_cntl_wq,
 				 &(driver->diag_msg_mask_update_work));
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 			ENCODE_RSP_AND_SEND(8 + ssid_range - 1);
 			return 0;
 		} else
 			buf = temp;
 #endif
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	} /* Set ALL runtime message mask  */
+	else if ((*buf == 0x7d) && (*(buf+1) == 0x5)) {
+		rt_mask = *(int *)(buf + 4);
+		diag_set_msg_mask(rt_mask);
+		diag_update_userspace_clients(MSG_MASKS_TYPE);
+#if defined(CONFIG_DIAG_OVER_USB)
+		if (chk_apps_only()) {
+			driver->apps_rsp_buf[0] = 0x7d; /* cmd_code */
+			driver->apps_rsp_buf[1] = 0x5; /* set subcommand */
+			driver->apps_rsp_buf[2] = 1; /* success */
+			driver->apps_rsp_buf[3] = 0; /* rsvd */
+			*(int *)(driver->apps_rsp_buf + 4) = rt_mask;
+			/* send msg mask update to peripheral */
+			if (driver->ch_cntl)
+				diag_send_msg_mask_update(driver->ch_cntl,
+					 ALL_SSID, ALL_SSID, MODEM_PROC);
+			if (driver->chqdsp_cntl)
+				diag_send_msg_mask_update(driver->chqdsp_cntl,
+					 ALL_SSID, ALL_SSID, QDSP_PROC);
+			if (driver->ch_wcnss_cntl)
+				diag_send_msg_mask_update(driver->ch_wcnss_cntl,
+					 ALL_SSID, ALL_SSID, WCNSS_PROC);
+			ENCODE_RSP_AND_SEND(7);
+			return 0;
+		} else
+			buf = temp;
+#endif
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	} else if (*buf == 0x82) {	/* event mask change */
 		buf += 4;
 		diag_event_num_bytes =  (*(uint16_t *)buf)/8+1;
@@ -755,9 +1209,25 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			*(uint16_t *)(driver->apps_rsp_buf + 2) = 0x0;
 			*(uint16_t *)(driver->apps_rsp_buf + 4) =
 							EVENT_LAST_ID + 1;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			if (driver->ch_cntl)
+				diag_send_event_mask_update(driver->ch_cntl,
+							 diag_event_num_bytes);
+			if (driver->chqdsp_cntl)
+				diag_send_event_mask_update(driver->chqdsp_cntl,
+ 							 diag_event_num_bytes);
+			if (driver->ch_wcnss_cntl)
+				diag_send_event_mask_update(
+				driver->ch_wcnss_cntl, diag_event_num_bytes);
+#else
+#ifndef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
 			for (i = 0; i < EVENT_LAST_ID/8 + 1; i++)
 				*(unsigned char *)(driver->apps_rsp_buf + 6 + i)
 									 = 0x0;
+#else
+			memcpy(driver->apps_rsp_buf+6, driver->event_masks,
+							 EVENT_LAST_ID/8+1);
+#endif
 			/* cannot do this on work queue, as each event update
 			needs a num_bytes variable. Each queue_work call will
 			overwrite the previous input, as its the same struct */
@@ -767,6 +1237,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 							 diag_event_num_bytes);
 			diag_send_event_mask_update(driver->ch_wcnss_cntl,
 							 diag_event_num_bytes);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 			ENCODE_RSP_AND_SEND(6 + EVENT_LAST_ID/8);
 			return 0;
 		} else
@@ -774,17 +1245,33 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 #endif
 	} else if (*buf == 0x60) {
 		diag_event_config = *(buf+1);
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+		diag_toggle_event_mask(*(buf+1));
+		diag_update_userspace_clients(EVENT_MASKS_TYPE);
+#endif
 #if defined(CONFIG_DIAG_OVER_USB)
 		if (chk_apps_only()) {
 			driver->apps_rsp_buf[0] = 0x60;
 			driver->apps_rsp_buf[1] = 0x0;
 			driver->apps_rsp_buf[2] = 0x0;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+			if (driver->ch_cntl)
+				diag_send_event_mask_update(driver->ch_cntl,
+ 							 diag_event_num_bytes);
+			if (driver->chqdsp_cntl)
+				diag_send_event_mask_update(driver->chqdsp_cntl,
+ 							 diag_event_num_bytes);
+			if (driver->ch_wcnss_cntl)
+				diag_send_event_mask_update(
+				driver->ch_wcnss_cntl, diag_event_num_bytes);
+#else
 			diag_send_event_mask_update(driver->ch_cntl,
 							 diag_event_num_bytes);
 			diag_send_event_mask_update(driver->chqdsp_cntl,
 							 diag_event_num_bytes);
 			diag_send_event_mask_update(driver->ch_wcnss_cntl,
 							 diag_event_num_bytes);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 			ENCODE_RSP_AND_SEND(2);
 			return 0;
 		}
@@ -846,8 +1333,13 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		driver->apps_rsp_buf[1] = 0x0;
 		*(uint16_t *)(driver->apps_rsp_buf + 2) = 0x0;
 		*(uint16_t *)(driver->apps_rsp_buf + 4) = EVENT_LAST_ID + 1;
+#ifndef CONFIG_MACH_LGE /* kalbaram  - QCTk diag patch */
 		for (i = 0; i < EVENT_LAST_ID/8 + 1; i++)
 			*(unsigned char *)(driver->apps_rsp_buf + 6 + i) = 0x0;
+#else
+		memcpy(driver->apps_rsp_buf+6, driver->event_masks,
+					 EVENT_LAST_ID/8+1);
+#endif
 		ENCODE_RSP_AND_SEND(6 + EVENT_LAST_ID/8);
 		return 0;
 	}
@@ -1186,6 +1678,14 @@ int diagfwd_connect(void)
 {
 	int err;
 
+#ifdef CONFIG_LGE_DM_APP
+	if (driver->logging_mode == DM_APP_MODE) {
+		printk(KERN_DEBUG "diag: USB connected in DM_APP_MODE\n");
+		driver->usb_connected = 1;
+		return 0;
+	}
+#endif
+
 	printk(KERN_DEBUG "diag: USB connected\n");
 	err = usb_diag_alloc_req(driver->legacy_ch, N_LEGACY_WRITE,
 			N_LEGACY_READ);
@@ -1222,6 +1722,15 @@ int diagfwd_connect(void)
 
 int diagfwd_disconnect(void)
 {
+
+#ifdef CONFIG_LGE_DM_APP
+	if (driver->logging_mode == DM_APP_MODE) {
+		printk(KERN_DEBUG "diag: USB disconnected in DM_APP_MODE\n");
+		driver->usb_connected = 0;
+		return 0;
+	}
+#endif
+
 	printk(KERN_DEBUG "diag: USB disconnected\n");
 	driver->usb_connected = 0;
 	driver->debug_flag = 1;
@@ -1477,6 +1986,9 @@ void diagfwd_init(void)
 {
 	diag_debug_buf_idx = 0;
 	driver->read_len_legacy = 0;
+#ifdef CONFIG_MACH_LGE /* kalbaram - QCTk diag patch */
+	spin_lock_init(&diag_cntl_lock);
+#endif
 
 	if (driver->event_mask == NULL) {
 		driver->event_mask = kzalloc(sizeof(
@@ -1554,6 +2066,10 @@ void diagfwd_init(void)
 	    && (driver->msg_masks = kzalloc(MSG_MASK_SIZE,
 					     GFP_KERNEL)) == NULL)
 		goto err;
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+	diag_create_msg_mask_table();
+	diag_event_num_bytes = 0;
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	if (driver->log_masks == NULL &&
 	    (driver->log_masks = kzalloc(LOG_MASK_SIZE, GFP_KERNEL)) == NULL)
 		goto err;
@@ -1630,10 +2146,12 @@ void diagfwd_init(void)
 #ifdef CONFIG_DIAG_OVER_USB
 	INIT_WORK(&(driver->diag_proc_hdlc_work), diag_process_hdlc_fn);
 	INIT_WORK(&(driver->diag_read_work), diag_read_work_fn);
+#if !defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
 	INIT_WORK(&(driver->diag_msg_mask_update_work),
 						 diag_msg_mask_update_fn);
 	INIT_WORK(&(driver->diag_log_mask_update_work),
 						 diag_log_mask_update_fn);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 	INIT_WORK(&(driver->diag_modem_mask_update_work),
 						 diag_modem_mask_update_fn);
 	INIT_WORK(&(driver->diag_qdsp_mask_update_work),

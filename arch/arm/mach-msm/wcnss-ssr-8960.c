@@ -26,7 +26,10 @@
 #include <mach/peripheral-loader.h>
 #include "smd_private.h"
 #include "ramdump.h"
-
+#if defined(CONFIG_LGE_HANDLE_PANIC) 
+#include <mach/restart.h>
+#include <mach/board_lge.h>
+#endif
 #define MODULE_NAME			"wcnss_8960"
 
 static void riva_smsm_cb_fn(struct work_struct *);
@@ -44,7 +47,13 @@ static int enable_riva_ssr;
 static void riva_smsm_cb_fn(struct work_struct *work)
 {
 	if (!enable_riva_ssr)
+	{
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		lge_set_magic_for_subsystem("riva");
+		msm_set_restart_mode(0x6d632130);
+#endif
 		panic(MODULE_NAME ": SMSM reset request received from Riva");
+	}
 	else
 		subsystem_restart("riva");
 }
@@ -69,7 +78,13 @@ static void smsm_state_cb_hdlr(void *data, uint32_t old_state,
 static void riva_fatal_fn(struct work_struct *work)
 {
 	if (!enable_riva_ssr)
+	{
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	        lge_set_magic_for_subsystem("riva");
+		msm_set_restart_mode(0x6d632130);
+#endif
 		panic(MODULE_NAME ": Watchdog bite received from Riva");
+	}
 	else
 		subsystem_restart("riva");
 }
@@ -172,6 +187,23 @@ static struct subsys_data riva_8960 = {
 	.ramdump = riva_ramdump,
 	.crash_shutdown = riva_crash_shutdown
 };
+
+/* host driver interface to initiate WCNSS SSR */
+int wcnss_subsystem_restart()
+{
+	int ret;
+
+	if (ss_restart_inprogress) {
+		pr_err("%s: Ignoring riva subsystem restart req, restart in progress\n",
+						MODULE_NAME);
+		return 0;
+	}
+    printk ("wcnss_subsystem_restart\n");
+	ss_restart_inprogress = true;
+	ret = schedule_work(&riva_fatal_work);
+	return ret;
+}
+EXPORT_SYMBOL(wcnss_subsystem_restart);
 
 static int enable_riva_ssr_set(const char *val, struct kernel_param *kp)
 {

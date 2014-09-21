@@ -144,6 +144,7 @@ config ARCH_MSM8960
 	select MSM_XO
 	select MSM_QDSP6_APR
 	select MSM_PIL
+	select MSM_PIL_RIVA
 	select MSM_AUDIO_QDSP6 if SND_SOC
 	select CPU_HAS_L2_PMU
 	select MSM_SPM_V2
@@ -701,6 +702,8 @@ config MACH_FSM9XXX_SURF
 	  FFA board.
 
 endmenu
+
+source "arch/arm/mach-msm/lge/Kconfig"
 
 config MSM_STACKED_MEMORY
 	bool "Stacked Memory"

@@ -793,16 +793,9 @@ int soc_pcm_close(struct snd_pcm_substream *substream)
 	cpu_dai->runtime = NULL;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		/* start delayed pop wq here for playback streams */
-		if (rtd->pmdown_time) {
-			codec_dai->pop_wait = 1;
-			schedule_delayed_work(&rtd->delayed_work,
-			msecs_to_jiffies(rtd->pmdown_time));
-		} else {
-			snd_soc_dapm_stream_event(rtd,
+		snd_soc_dapm_stream_event(rtd,
 			codec_dai->driver->playback.stream_name,
 			SND_SOC_DAPM_STREAM_STOP);
-		}
 	} else {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd,

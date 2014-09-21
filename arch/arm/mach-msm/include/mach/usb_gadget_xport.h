@@ -27,7 +27,7 @@ enum transport_type {
 
 #define XPORT_STR_LEN	10
 
-static char *xport_to_str(enum transport_type t)
+char *xport_to_str(enum transport_type t)
 {
 	switch (t) {
 	case USB_GADGET_XPORT_TTY:
@@ -49,7 +49,7 @@ static char *xport_to_str(enum transport_type t)
 	}
 }
 
-static enum transport_type str_to_xport(const char *name)
+enum transport_type str_to_xport(const char *name)
 {
 	if (!strncasecmp("TTY", name, XPORT_STR_LEN))
 		return USB_GADGET_XPORT_TTY;

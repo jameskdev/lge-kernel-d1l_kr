@@ -140,6 +140,7 @@ struct pm8921_platform_data {
 	struct pm8xxx_led_platform_data		*leds_pdata;
 	struct pm8xxx_vibrator_platform_data	*vibrator_pdata;
 	struct pm8xxx_ccadc_platform_data	*ccadc_pdata;
+        struct direct_qcoin_platform_data       *pm8xxx_qcoin_pdata;
 };
 
 #endif

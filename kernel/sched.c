@@ -4408,8 +4408,17 @@ asmlinkage void __sched preempt_schedule_irq(void)
 {
 	struct thread_info *ti = current_thread_info();
 
+	/* LGE_CHANGE
+	 * 2012-02-02, jamin.koo@lge.com
+	 * Divide BUG_ON for narrowing the kernel crash problem respectively
+	 */
+#if 1
+	BUG_ON(ti->preempt_count);
+	BUG_ON(!irqs_disabled());
+#else
 	/* Catch callers which need to be fixed */
 	BUG_ON(ti->preempt_count || !irqs_disabled());
+#endif //
 
 	do {
 		add_preempt_count(PREEMPT_ACTIVE);
@@ -4948,6 +4957,8 @@ int can_nice(const struct task_struct *p, const int nice)
 SYSCALL_DEFINE1(nice, int, increment)
 {
 	long nice, retval;
+	if (!ccs_capable(CCS_SYS_NICE))
+		return -EPERM;
 
 	/*
 	 * Setpriority might change our priority at the same moment.

@@ -47,7 +47,16 @@ enum pm8921_usb_debounce_time {
 	PM_USB_DEBOUNCE_40P5MS,
 	PM_USB_DEBOUNCE_80P5MS,
 };
+/* LGE_CHANGE
+ * add the xo_thermal mitigation way 
+ * 2012-04-10, hiro.kwon@lge.com
+*/
 
+typedef enum{
+	IUSB_REDUCE_METHOD = 0,
+	IUSB_USE_FOR_ISYSTEM_METHOD,
+} xo_mitigation_way;
+/* 2012-04-10, hiro.kwon@lge.com */
 /**
  * struct pm8921_charger_platform_data -
  * @safety_time:	max charging time in minutes incl. fast and trkl
@@ -129,8 +138,27 @@ struct pm8921_charger_platform_data {
 	int				vin_min;
 	int				*thermal_mitigation;
 	int				thermal_levels;
+/* BEGIN : jooyeong.lee@lge.com 2012-02-27 Change the charger_temp_scenario */
+#ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
+	int				temp_level_1;
+	int				temp_level_2;
+	int				temp_level_3;
+	int				temp_level_4;
+	int				temp_level_5;
+	/* LGE_CHANGE
+ * add the xo_thermal mitigation way 
+ * 2012-04-10, hiro.kwon@lge.com
+*/
+	xo_mitigation_way thermal_mitigation_method;  
+/* 2012-04-10, hiro.kwon@lge.com */
+#endif
+/* END : jooyeong.lee@lge.com 2012-02-27 */
 	enum pm8921_chg_cold_thr	cold_thr;
 	enum pm8921_chg_hot_thr		hot_thr;
+#ifdef CONFIG_MACH_LGE
+	int batt_id_gpio;			/* No. of msm gpio for battery id */
+	int batt_id_pu_gpio;		/* No. of msm gpio for battery id pull up */
+#endif
 };
 
 enum pm8921_charger_source {
@@ -235,6 +263,9 @@ bool pm8921_is_battery_charging(int *source);
  */
 int pm8921_batt_temperature(void);
 /**
+#ifdef CONFIG_BATTERY_MAX17043
+void pm8921_charger_force_update_batt_psy(void);
+#endif
  * pm8921_usb_ovp_set_threshold -
  * Set the usb threshold as defined in by
  * enum usb_ov_threshold
@@ -315,6 +346,12 @@ static inline int pm8921_batt_temperature(void)
 {
 	return -ENXIO;
 }
+
+#ifdef CONFIG_BATTERY_MAX17043
+static inline void pm8921_charger_force_update_batt_psy(void)
+{
+}
+#endif
 static inline int pm8921_usb_ovp_set_threshold(enum pm8921_usb_ov_threshold ov)
 {
 	return -ENXIO;

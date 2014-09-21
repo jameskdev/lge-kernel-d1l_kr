@@ -616,6 +616,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 	case IPI_CPU_START:
 		/* Wake up from WFI/WFE using SGI */
 		break;
+
 	case IPI_TIMER:
 		ipi_timer();
 		break;

@@ -37,8 +37,17 @@
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mdp4.h"
+#ifdef CONFIG_LGE_HIDDEN_RESET
+#include <mach/board_lge.h>
+#endif
 
 #define VERSION_KEY_MASK	0xFFFFFF00
+
+/* QCT patch for video quantization issue */
+#ifdef CONFIG_FB_MSM_HDMI_MSM_LG_MHL_CERTIFICATION
+extern void video_quantization_setting(void);
+#endif
+#define QCT_PATCH
 
 struct mdp4_overlay_ctrl {
 	struct mdp4_overlay_pipe plist[OVERLAY_PIPE_MAX];
@@ -96,6 +105,12 @@ struct mdp4_overlay_ctrl {
 
 static struct mdp4_overlay_ctrl *ctrl = &mdp4_overlay_db;
 static int new_perf_level;
+
+
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+static int panel_rotate_180 = 1;
+#endif
 
 /* static array with index 0 for unset status and 1 for set status */
 static bool overlay_status[MDP4_OVERLAY_TYPE_MAX];
@@ -187,10 +202,17 @@ void mdp4_overlay_dmae_cfg(struct msm_fb_data_type *mfd, int atv)
 		MDP_OUTP(MDP_BASE + 0xb3014, 0x1000080);
 		MDP_OUTP(MDP_BASE + 0xb4004, 0x67686970);
 	} else {
-		mdp_vid_quant_set();
+/* QCT patch for video quantization issue */
+#ifdef CONFIG_FB_MSM_HDMI_MSM_LG_MHL_CERTIFICATION
+		video_quantization_setting();
+#else
+#ifdef CONFIG_FB_MSM_EXT_INTERFACE_COMMON
+		mdp_vid_quant_set(); /* M8960AAAAANLYA1044 */
+#endif
 		MDP_OUTP(MDP_BASE + 0xb0070, 0xff0000);
 		MDP_OUTP(MDP_BASE + 0xb0074, 0xff0000);
 		MDP_OUTP(MDP_BASE + 0xb0078, 0xff0000);
+#endif
 	}
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
@@ -398,8 +420,13 @@ static void mdp4_scale_setup(struct mdp4_overlay_pipe *pipe)
 	pipe->phasey_step = MDP4_VG_PHASE_STEP_DEFAULT;
 
 	if (pipe->dst_h && pipe->src_h != pipe->dst_h) {
-		if (pipe->dst_h > pipe->src_h * 8)	/* too much */
+		u32 upscale_max;
+		upscale_max = (mdp_rev >= MDP_REV_41) ?
+			MDP4_REV41_OR_LATER_UP_SCALING_MAX :
+			MDP4_REV40_UP_SCALING_MAX;
+		if (pipe->dst_h > pipe->src_h * upscale_max)
 			return;
+
 		pipe->op_mode |= MDP4_OP_SCALEY_EN;
 
 		if (pipe->pipe_type == OVERLAY_TYPE_VIDEO) {
@@ -421,10 +448,14 @@ static void mdp4_scale_setup(struct mdp4_overlay_pipe *pipe)
 	}
 
 	if (pipe->dst_w && pipe->src_w != pipe->dst_w) {
-		if (pipe->dst_w > pipe->src_w * 8)	/* too much */
+		u32 upscale_max;
+		upscale_max = (mdp_rev >= MDP_REV_41) ?
+			MDP4_REV41_OR_LATER_UP_SCALING_MAX :
+			MDP4_REV40_UP_SCALING_MAX;
+
+		if (pipe->dst_w > pipe->src_w * upscale_max)
 			return;
 		pipe->op_mode |= MDP4_OP_SCALEX_EN;
-
 		if (pipe->pipe_type == OVERLAY_TYPE_VIDEO) {
 			if (pipe->flags & MDP_BACKEND_COMPOSITION &&
 				pipe->alpha_enable && pipe->dst_w > pipe->src_w)
@@ -489,6 +520,26 @@ void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe)
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
+/* [START] 20120208 force FLIP_MODE for INVERSE PANEL - kyunghoo.ryu@lge.com */
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+	if (panel_rotate_180 && (pipe->pipe_num == OVERLAY_PIPE_RGB1 || pipe->pipe_num == OVERLAY_PIPE_RGB2))
+	{
+		uint32 op_mode = pipe->op_mode | MDP4_OP_FLIP_UD | MDP4_OP_SCALEY_EN;
+
+		if (pipe->ext_flag & MDP_FLIP_UD)
+			op_mode &= ~MDP4_OP_FLIP_UD;
+
+		pipe->op_mode = op_mode;
+	}
+
+	if ((pipe->op_mode & MDP4_OP_FLIP_UD) && pipe->mfd)
+		dst_xy = (((pipe->mfd->panel_info.yres - pipe->dst_y - pipe->dst_h) << 16) | pipe->dst_x);
+
+	if (!pipe->mfd)
+		pr_err("rgb mfd is not set\n");
+
+#endif
 	outpdw(rgb_base + 0x0000, src_size);	/* MDP_RGB_SRC_SIZE */
 	outpdw(rgb_base + 0x0004, src_xy);	/* MDP_RGB_SRC_XY */
 	outpdw(rgb_base + 0x0008, dst_size);	/* MDP_RGB_DST_SIZE */
@@ -621,6 +672,29 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 		}
 	}
 
+	/* [START] 20120208 force FLIP_MODE for INVERSE PANEL - kyunghoo.ryu@lge.com */
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+		defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+
+	if (panel_rotate_180)
+	{
+		uint32 op_mode = pipe->op_mode | MDP4_OP_FLIP_UD;
+
+		if (pipe->ext_flag & MDP_FLIP_UD)
+			op_mode &= ~MDP4_OP_FLIP_UD;
+
+		pipe->op_mode = op_mode;
+	}
+
+	if ((pipe->op_mode & MDP4_OP_FLIP_UD) && pipe->mfd)
+	{
+		dst_xy = (((pipe->mfd->panel_info.yres - pipe->dst_y - pipe->dst_h) << 16) | pipe->dst_x);
+		outpdw(MDP_BASE + 0xE0044, 0xe0fff);
+	}
+
+	if (!pipe->mfd)
+		pr_err("vg  mfd is not set\n");
+#endif
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	outpdw(vg_base + 0x0000, src_size);	/* MDP_RGB_SRC_SIZE */
@@ -1539,6 +1613,7 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 			outpdw(rgb_base + 0x1008, constant_color);
 		}
 	} else if (fg_alpha) {
+		/* pick fg alpha */
 		blend_op = (MDP4_BLEND_BG_ALPHA_FG_PIXEL |
 			    MDP4_BLEND_BG_INV_ALPHA);
 		fg_color3_out = 1; /* keep fg alpha */
@@ -1587,7 +1662,13 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all)
 {
+	/* LGE_CHANGE
+	 * Add QCT patches for blue screen issue after 1041 patches
+	 * 2012-03-15, baryun.hwang@lge.com
+	 */
+#ifdef QCT_PATCH
 	struct mdp4_overlay_pipe *bg_pipe;
+#endif
 	uint32 bits = 0;
 
 	if (all) {
@@ -1599,11 +1680,13 @@ void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all)
 
 	if (pipe->pipe_num <= OVERLAY_PIPE_RGB2)
 		bits |= 1 << (2 + pipe->pipe_num);
+#ifdef QCT_PATCH
 	if (pipe->is_fg && pipe->alpha == 0xFF) {
 		bg_pipe = mdp4_overlay_stage_pipe(pipe->mixer_num,
 						  MDP4_MIXER_STAGE_BASE);
 		bits |= 1 << (2 + bg_pipe->pipe_num);
 	}
+#endif
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	outpdw(MDP_BASE + 0x18000, bits);	/* MDP_OVERLAY_REG_FLUSH */
@@ -1756,6 +1839,11 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	struct mdp4_overlay_pipe *pipe;
 	int ret, ptype;
 
+	u32 upscale_max;
+	upscale_max = (mdp_rev >= MDP_REV_41) ?
+		MDP4_REV41_OR_LATER_UP_SCALING_MAX :
+		MDP4_REV40_UP_SCALING_MAX;
+
 	if (mfd == NULL) {
 		pr_err("%s: mfd == NULL, -ENODEV\n", __func__);
 		return -ENODEV;
@@ -1780,8 +1868,7 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 		return -EINVAL;
 	}
 
-
-	if (req->dst_rect.h > (req->src_rect.h * 8)) {	/* too much */
+	if (req->dst_rect.h > (req->src_rect.h * upscale_max)) {
 		mdp4_stat.err_scale++;
 		pr_err("%s: scale up, too much (h)!\n", __func__);
 		return -ERANGE;
@@ -1793,7 +1880,7 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 		return -ERANGE;
 	}
 
-	if (req->dst_rect.w > (req->src_rect.w * 8)) {	/* too much */
+	if (req->dst_rect.w > (req->src_rect.w * upscale_max)) {
 		mdp4_stat.err_scale++;
 		pr_err("%s: scale up, too much (w)!\n", __func__);
 		return -ERANGE;
@@ -1862,6 +1949,12 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	else
 		pipe = mdp4_overlay_ndx2pipe(req->id);
 
+/* [START] 20120208 force FLIP_MODE for INVERSE PANEL - kyunghoo.ryu@lge.com */
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+	pipe->mfd = mfd;
+#endif
+
 	if (pipe == NULL) {
 		pr_err("%s: pipe == NULL!\n", __func__);
 		return -ENOMEM;
@@ -1902,6 +1995,14 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	pipe->dst_x = req->dst_rect.x & 0x07ff;
 
 	pipe->op_mode = 0;
+
+/* [START] 20120208 force FLIP_MODE for INVERSE PANEL - kyunghoo.ryu@lge.com */
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+#if 1
+	pipe->ext_flag = req->flags;
+#endif
+#endif
 
 	if (req->flags & MDP_FLIP_LR)
 		pipe->op_mode |= MDP4_OP_FLIP_LR;
@@ -2129,6 +2230,12 @@ static uint32 mdp4_overlay_get_perf_level(struct mdp_overlay *req,
 			return OVERLAY_PERF_LEVEL3;
 
 	} else if (req->src.width*req->src.height <= OVERLAY_720P_TILE_SIZE) {
+		/* LGE_CAHNGE
+		* QCT temp. patch for bluescreen issue
+		* when playing 720p video clip in portrait mode(SR#00800402)
+		*/
+#ifndef CONFIG_MACH_LGE
+		/* QCT orignal code */
 		u32 max, min;
 		max = (req->dst_rect.h > req->dst_rect.w) ?
 			req->dst_rect.h : req->dst_rect.w;
@@ -2137,6 +2244,7 @@ static uint32 mdp4_overlay_get_perf_level(struct mdp_overlay *req,
 		if (max > min)	/* landscape mode */
 			return OVERLAY_PERF_LEVEL3;
 		else		/* potrait mode */
+#endif
 			return OVERLAY_PERF_LEVEL2;
 	}
 	else
@@ -2195,10 +2303,14 @@ static void mdp4_overlay1_update_blt_mode(struct msm_fb_data_type *mfd)
 		return;
 	if (mfd->use_ov1_blt) {
 		mdp4_allocate_writeback_buf(mfd, MDP4_MIXER1);
+#if defined(CONFIG_FB_MSM_DTV) /* LGE - added QCT 1041 Release */ 
 		mdp4_dtv_overlay_blt_start(mfd);
+#endif
 		pr_debug("%s overlay1 writeback is enabled\n", __func__);
 	} else {
+#if defined(CONFIG_FB_MSM_DTV) /* LGE - added QCT 1041 Release */ 
 		mdp4_dtv_overlay_blt_stop(mfd);
+#endif
 		pr_debug("%s overlay1 writeback is disabled\n", __func__);
 	}
 	mfd->ov1_blt_state = mfd->use_ov1_blt;
@@ -2325,6 +2437,15 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		mfd->use_ov1_blt &= ~(1 << (pipe->pipe_ndx-1));
 		mfd->use_ov1_blt |= (use_blt << (pipe->pipe_ndx-1));
 	}
+
+	/* LGE_UPDATE_S, 2012-04-23, jamin.koo@lge.com
+	 * Displaying corrupted or blank image while playing only for HD/Full HD contents
+	 * SR 00826773
+	 */
+#ifdef CONFIG_MACH_LGE
+	if (mfd->use_ov1_blt)
+		mdp4_overlay1_update_blt_mode(mfd);
+#endif
 
 	if (new_perf_level != perf_level) {
 		u32 old_level = new_perf_level;
@@ -2510,7 +2631,13 @@ int mdp4_overlay_play_wait(struct fb_info *info, struct msmfb_overlay_data *req)
 		return -EPERM;
 
 	pipe = mdp4_overlay_ndx2pipe(req->id);
-
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!pipe) {
+		mdp4_stat.err_play++;
+		return -ENODEV;
+	}
+#endif
 	if (mutex_lock_interruptible(&mfd->dma->ov_mutex))
 		return -EINTR;
 
@@ -2565,6 +2692,10 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 	}
 
 	addr = start + img->offset;
+#ifdef CONFIG_LGE_HIDDEN_RESET
+	if (on_hidden_reset)
+		addr = (ulong)lge_get_hreset_fb_phys_addr();
+#endif
 	pipe->srcp0_addr = addr;
 	pipe->srcp0_ystride = pipe->src_width * pipe->bpp;
 
@@ -2660,17 +2791,33 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 
 	if (mfd->use_ov0_blt)
 		mdp4_overlay_update_blt_mode(mfd);
+/* [START] 20120208 force FLIP_MODE for INVERSE PANEL - kyunghoo.ryu@lge.com */
+#if defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) || \
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL)
+	pipe->mfd = mfd;
+#endif
 
+	/* LGE_UPDATE_S, 2012-04-23, jamin.koo@lge.com
+	 * Displaying corrupted or blank image while playing only for HD/Full HD contents
+	 * SR 00826773
+	 */
+#ifndef CONFIG_MACH_LGE
+	/* QCT original code */
 	if (mfd->use_ov1_blt)
 		mdp4_overlay1_update_blt_mode(mfd);
-
+#endif
 	if (pipe->pipe_type == OVERLAY_TYPE_VIDEO) {
 		mdp4_overlay_vg_setup(pipe);	/* video/graphic pipe */
 	} else {
 		if (pipe->flags & MDP_SHARPENING) {
+/* Disable printing log temporarily
+ * 2012-02-02, jongyeol.yang@lge.com
+ * start
 			pr_warn(
 			"%s: Sharpening/Smoothing not supported on RGB pipe\n",
 								     __func__);
+ * end
+ */
 			pipe->flags &= ~MDP_SHARPENING;
 		}
 		mdp4_overlay_rgb_setup(pipe);	/* rgb pipe */
@@ -2707,8 +2854,16 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 #ifdef CONFIG_FB_MSM_MIPI_DSI
 		else if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO) {
 			mdp4_overlay_reg_flush(pipe, 0);
+
+			/* LGE_UPDATE_S, 2012-04-23, jamin.koo@lge.com
+			 * Displaying corrupted or blank image while playing only for HD/Full HD contents
+			 * SR 00826773
+			 */
+#ifndef CONFIG_MACH_LGE
+			/* QCT original code */
 			if (!mfd->use_ov0_blt)
 				mdp4_overlay_update_blt_mode(mfd);
+#endif
 			mdp4_overlay_dsi_video_vsync_push(mfd, pipe);
 		}
 #endif

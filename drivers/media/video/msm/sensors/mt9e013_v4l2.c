@@ -42,7 +42,12 @@ static struct msm_camera_i2c_reg_conf mt9e013_prev_settings[] = {
 	{0x034C, 0x0660},/*X_OUTPUT_SIZE*/
 	{0x034E, 0x04C8},/*Y_OUTPUT_SIZE*/
 	{0x306E, 0xFCB0},/*DATAPATH_SELECT*/
-	{0x3040, 0x04C3},/*READ_MODE*/
+	/* LGE_CHANGE:
+	 * Added Flip & Mirror configuration (0x04C3 -> 0xC4C3)
+	 * 2011-10-25, sunkyoo.hwang@lge.com
+	 */
+	{0x3040, 0xC4C3},/*READ_MODE*/
+
 	{0x3178, 0x0000},/*ANALOG_CONTROL5*/
 	{0x3ED0, 0x1E24},/*DAC_LD_4_5*/
 	{0x0400, 0x0002},/*SCALING_MODE*/
@@ -62,15 +67,20 @@ static struct msm_camera_i2c_reg_conf mt9e013_snap_settings[] = {
 	{0x0306, 0x003A},/*PLL_MULTIPLIER*/
 	{0x0308, 0x000A},/*OP_PIX_CLK_DIV*/
 	{0x030A, 0x0001},/*OP_SYS_CLK_DIV*/
+
 	/*Output Size (3264x2448)*/
-	{0x0344, 0x0000},/*X_ADDR_START */
-	{0x0348, 0x0CCF},/*X_ADDR_END*/
-	{0x0346, 0x0000},/*Y_ADDR_START */
-	{0x034A, 0x099F},/*Y_ADDR_END*/
+	{0x0344, 0x0008},/*X_ADDR_START */
+	{0x0348, 0x0CD7},/*X_ADDR_END*/
+	{0x0346, 0x0008},/*Y_ADDR_START */
+	{0x034A, 0x09A7},/*Y_ADDR_END*/
 	{0x034C, 0x0CD0},/*X_OUTPUT_SIZE*/
 	{0x034E, 0x09A0},/*Y_OUTPUT_SIZE*/
 	{0x306E, 0xFC80},/*DATAPATH_SELECT*/
-	{0x3040, 0x0041},/*READ_MODE*/
+	/* LGE_CHANGE:
+	 * Added Flip & Mirror configuration (0x0041 -> 0xC041)
+	 * 2011-10-25, sunkyoo.hwang@lge.com
+	 */
+	{0x3040, 0xC041},/*READ_MODE*/
 	{0x3178, 0x0000},/*ANALOG_CONTROL5*/
 	{0x3ED0, 0x1E24},/*DAC_LD_4_5*/
 	{0x0400, 0x0000},/*SCALING_MODE*/
@@ -84,18 +94,20 @@ static struct msm_camera_i2c_reg_conf mt9e013_snap_settings[] = {
 };
 
 static struct msm_camera_i2c_reg_conf mt9e013_hfr60_settings[] = {
-	{0x0300, 0x0005},/*VT_PIX_CLK_DIV*/
+	/* pll_settings_60fps */
+	{0x0300, 0x0004},/*VT_PIX_CLK_DIV*/
 	{0x0302, 0x0001},/*VT_SYS_CLK_DIV*/
 	{0x0304, 0x0002},/*PRE_PLL_CLK_DIV*/
-	{0x0306, 0x0029},/*PLL_MULTIPLIER*/
+	{0x0306, 0x0042},/*PLL_MULTIPLIER*/
 	{0x0308, 0x000A},/*OP_PIX_CLK_DIV*/
 	{0x030A, 0x0001},/*OP_SYS_CLK_DIV*/
+	/*Output Size (1632x1224)*/
 	{0x0344, 0x0008},/*X_ADDR_START*/
-	{0x0348, 0x0685},/*X_ADDR_END*/
+	{0x0348, 0x0CC5},/*X_ADDR_END*/
 	{0x0346, 0x013a},/*Y_ADDR_START*/
-	{0x034A, 0x055B},/*Y_ADDR_END*/
-	{0x034C, 0x0340},/*X_OUTPUT_SIZE*/
-	{0x034E, 0x0212},/*Y_OUTPUT_SIZE*/
+	{0x034A, 0x0863},/*Y_ADDR_END*/
+	{0x034C, 0x0660},/*X_OUTPUT_SIZE*/
+	{0x034E, 0x0396},/*Y_OUTPUT_SIZE*/
 	{0x306E, 0xFC80},/*DATAPATH_SELECT*/
 	{0x3040, 0x00C3},/*READ_MODE*/
 	{0x3178, 0x0000},/*ANALOG_CONTROL5*/
@@ -178,8 +190,8 @@ static struct msm_camera_i2c_reg_conf mt9e013_recommend_settings[] = {
 	{0x306E, 0xFC80},
 	{0x30B2, 0xC000},
 	{0x30D6, 0x0800},
-	{0x316C, 0xB42F},
-	{0x316E, 0x869C},
+	{0x316C, 0xB42A},
+	{0x316E, 0x869A},
 	{0x3170, 0x210E},
 	{0x317A, 0x010E},
 	{0x31E0, 0x1FB9},
@@ -194,11 +206,12 @@ static struct msm_camera_i2c_reg_conf mt9e013_recommend_settings[] = {
 	{0x3E08, 0x6841},
 	{0x3E0A, 0x400C},
 	{0x3E0C, 0x1001},
-	{0x3E0E, 0x2103},
+	{0x3E0E, 0x2603},
 	{0x3E10, 0x4B41},
-	{0x3E12, 0x4B26},
+	{0x3E12, 0x4B24},
+	{0x3E14, 0xA3CF},
 	{0x3E16, 0x8802},
-	{0x3E18, 0x84FF},
+	{0x3E18, 0x8401},
 	{0x3E1A, 0x8601},
 	{0x3E1C, 0x8401},
 	{0x3E1E, 0x840A},
@@ -442,7 +455,6 @@ static struct v4l2_subdev_core_ops mt9e013_subdev_core_ops = {
 	.ioctl = msm_sensor_subdev_ioctl,
 	.s_power = msm_sensor_power,
 };
-
 static struct v4l2_subdev_video_ops mt9e013_subdev_video_ops = {
 	.enum_mbus_fmt = msm_sensor_v4l2_enum_fmt,
 };

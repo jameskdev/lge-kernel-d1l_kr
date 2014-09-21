@@ -842,6 +842,32 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 			goto fail;
 		}
 
+#if 0 /* removed by M8960AAAAANLYA1042 */
+		cvs_set_dtx.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						      APR_HDR_LEN(APR_HDR_SIZE),
+						      APR_PKT_VER);
+		cvs_set_dtx.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+					sizeof(cvs_set_dtx) - APR_HDR_SIZE);
+		cvs_set_dtx.hdr.src_port = v->session_id;
+		cvs_set_dtx.hdr.dest_port = cvs_handle;
+		cvs_set_dtx.hdr.token = 0;
+		cvs_set_dtx.hdr.opcode = VSS_ISTREAM_CMD_SET_ENC_DTX_MODE;
+		cvs_set_dtx.dtx_mode.enable = 1; // mint.choi@lge.com temp enable dtx mode for AMR VT
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_set_dtx);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending SET_DTX\n",
+			       __func__, ret);
+			goto fail;
+		}
+		ret = wait_event_timeout(v->cvs_wait,
+					 (v->cvs_state == CMD_STATUS_SUCCESS),
+					 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+#endif
 		ret = voice_set_dtx(v);
 		if (ret < 0)
 			goto fail;
@@ -883,6 +909,32 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 			goto fail;
 		}
 
+#if 0 /* removed by M8960AAAAANLYA1042 */
+		cvs_set_dtx.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						      APR_HDR_LEN(APR_HDR_SIZE),
+						      APR_PKT_VER);
+		cvs_set_dtx.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				       sizeof(cvs_set_dtx) - APR_HDR_SIZE);
+		cvs_set_dtx.hdr.src_port = v->session_id;
+		cvs_set_dtx.hdr.dest_port = cvs_handle;
+		cvs_set_dtx.hdr.token = 0;
+		cvs_set_dtx.hdr.opcode = VSS_ISTREAM_CMD_SET_ENC_DTX_MODE;
+		cvs_set_dtx.dtx_mode.enable = 1; // mint.choi@lge.com temp enable dtx mode for AMR VT
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_set_dtx);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending SET_DTX\n",
+			       __func__, ret);
+			goto fail;
+		}
+		ret = wait_event_timeout(v->cvs_wait,
+					 (v->cvs_state == CMD_STATUS_SUCCESS),
+					 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+#endif
 		ret = voice_set_dtx(v);
 		if (ret < 0)
 			goto fail;

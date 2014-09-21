@@ -342,6 +342,9 @@ static u32 vcd_flush_in_flushing
 static u32 vcd_flush_in_eos(struct vcd_clnt_ctxt *cctxt,
 	u32 mode)
 {
+/* LGE_CHANGE_S, To apply workaround path for live effect "Does not stopped" error - SR00825162, 2012-04-21, ejoon.kim@lge.com */
+	u32 rc = VCD_S_SUCCESS;
+/* LGE_CHANGE_E, To apply workaround path for live effect "Does not stopped" error - SR00825162, 2012-04-21, ejoon.kim@lge.com */
 	VCD_MSG_LOW("vcd_flush_in_eos:");
 
 	if (mode > VCD_FLUSH_ALL || !mode) {
@@ -352,9 +355,23 @@ static u32 vcd_flush_in_eos(struct vcd_clnt_ctxt *cctxt,
 
 	VCD_MSG_MED("Flush mode requested %d", mode);
 
-	cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
+/* LGE_CHANGE_S, To apply workaround path for live effect "Does not stopped" error - SR00825162, 2012-04-21, ejoon.kim@lge.com */
+//	cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
 
-	return VCD_S_SUCCESS;
+//	return VCD_S_SUCCESS;
+
+    if (!(cctxt->status.frame_submitted)) {
+        rc = vcd_flush_buffers(cctxt, mode);
+        if (!VCD_FAILED(rc)) {
+            VCD_MSG_HIGH("All buffers are flushed");
+            cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
+            vcd_send_flush_done(cctxt, VCD_S_SUCCESS);
+        }
+    } else
+        cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
+
+    return rc;
+/* LGE_CHANGE_E, To apply workaround path for live effect "Does not stopped" error - SR00825162, 2012-04-21, ejoon.kim@lge.com */
 }
 
 static u32 vcd_flush_in_invalid(struct vcd_clnt_ctxt *cctxt,

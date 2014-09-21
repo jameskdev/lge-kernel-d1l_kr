@@ -40,6 +40,7 @@ struct pm8xxx_vib {
 	struct device *dev;
 	const struct pm8xxx_vibrator_platform_data *pdata;
 	int state;
+	int pre_value;
 	int level;
 	u8  reg_vib_drv;
 };
@@ -144,6 +145,12 @@ static void pm8xxx_vib_enable(struct timed_output_dev *dev, int value)
 	struct pm8xxx_vib *vib = container_of(dev, struct pm8xxx_vib,
 					 timed_dev);
 	unsigned long flags;
+	spin_lock_irqsave(&vib->lock, flags);
+	if (value == 0 && vib->pre_value <= vib->pdata->min_timeout_ms) {
+		spin_unlock_irqrestore(&vib->lock, flags);
+		return;
+	}
+	spin_unlock_irqrestore(&vib->lock, flags);
 
 retry:
 	spin_lock_irqsave(&vib->lock, flags);
@@ -156,13 +163,20 @@ retry:
 	if (value == 0)
 		vib->state = 0;
 	else {
+/* Set Min Timeout for normal fuction */
+		value = (value < vib->pdata->min_timeout_ms ?
+			 vib->pdata->min_timeout_ms : value);
+
 		value = (value > vib->pdata->max_timeout_ms ?
-				 vib->pdata->max_timeout_ms : value);
+			 vib->pdata->max_timeout_ms : value);
 		vib->state = 1;
+		vib->pre_value = value;
+
 		hrtimer_start(&vib->vib_timer,
 			      ktime_set(value / 1000, (value % 1000) * 1000000),
 			      HRTIMER_MODE_REL);
 	}
+
 	spin_unlock_irqrestore(&vib->lock, flags);
 	schedule_work(&vib->work);
 }
@@ -216,6 +230,73 @@ static const struct dev_pm_ops pm8xxx_vib_pm_ops = {
 };
 #endif
 
+/* LGE_CHANGE
+* control the volume of vibration
+* 2012-01-02, donggyun.kim@lge.com
+*/
+#ifdef CONFIG_LGE_PMIC8XXX_VIBRATOR_VOL
+#define PWM_MAGNITUDE_MAX 128
+#define PWM_MAGNITUDE_MIN 1
+#define FLOATING_POINT_CAL 100
+
+static ssize_t pm8xxx_vib_lvl_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+/* Bypass cause of unused function, donggyun.kim@lge.com, 03/07/2012 */
+#if 0
+	struct timed_output_dev *dev_ = (struct timed_output_dev *)dev_get_drvdata(dev);
+	struct pm8xxx_vib *vib = container_of(dev_, struct pm8xxx_vib, timed_dev);
+	int gain;
+	int level_mV = (vib->level) * 100;
+
+	/* Convert PMIC mV level to magnitude value */
+	if (level_mV >= VIB_MAX_LEVEL_mV)
+		gain = PWM_MAGNITUDE_MAX;
+	else if (level_mV <= VIB_MIN_LEVEL_mV)
+		gain = PWM_MAGNITUDE_MIN;
+	else {
+		int buf;
+		buf = ((level_mV - VIB_MIN_LEVEL_mV) * FLOATING_POINT_CAL) / (VIB_MAX_LEVEL_mV - VIB_MIN_LEVEL_mV);
+		gain = (PWM_MAGNITUDE_MAX * buf) / FLOATING_POINT_CAL;
+	}
+#else
+	int gain;
+	gain = PWM_MAGNITUDE_MAX;
+#endif
+	return sprintf(buf, "%d\n", gain);
+}
+
+static ssize_t pm8xxx_vib_lvl_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct timed_output_dev *dev_ = (struct timed_output_dev *)dev_get_drvdata(dev);
+	struct pm8xxx_vib *vib = container_of(dev_, struct pm8xxx_vib, timed_dev);
+
+	int level_mV;
+/* Bypass cause of unused function. always MAX voltage, donggyun.kim@lge.com, 03/07/2012 */
+#if 0
+	int gain;
+	sscanf(buf, "%d", &gain);
+
+	/* Convert magnitude value to PMIC mV level */
+	if (gain >= PWM_MAGNITUDE_MAX)
+		level_mV = VIB_MAX_LEVEL_mV;
+	else if (gain < PWM_MAGNITUDE_MIN)
+		level_mV = 0;
+	else
+		level_mV = (((VIB_MAX_LEVEL_mV - VIB_MIN_LEVEL_mV) * gain) / PWM_MAGNITUDE_MAX) + VIB_MIN_LEVEL_mV;
+
+	vib->level = level_mV / 100;
+	dev_dbg(vib->dev, "VIB_DRV - M:[%d], L:[%d]\n", gain, vib->level);
+#else
+	level_mV = VIB_MAX_LEVEL_mV;
+	vib->level = level_mV / 100;
+#endif
+	return size;
+}
+
+static DEVICE_ATTR(amp, S_IRUGO | S_IWUSR, pm8xxx_vib_lvl_show, pm8xxx_vib_lvl_store);
+
+#endif /* CONFIG_LGE_PMIC8XXX_VIBRATOR_VOL */
+
 static int __devinit pm8xxx_vib_probe(struct platform_device *pdev)
 
 {
@@ -238,6 +319,7 @@ static int __devinit pm8xxx_vib_probe(struct platform_device *pdev)
 
 	vib->pdata	= pdata;
 	vib->level	= pdata->level_mV / 100;
+	vib->pre_value  = 0;
 	vib->dev	= &pdev->dev;
 
 	spin_lock_init(&vib->lock);
@@ -270,7 +352,16 @@ static int __devinit pm8xxx_vib_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto err_read_vib;
 
+#ifdef CONFIG_LGE_PMIC8XXX_VIBRATOR_VOL
+	rc = device_create_file(vib->timed_dev.dev, &dev_attr_amp);
+	if (rc < 0)
+		goto err_read_vib;
+
+	/* no vibration during initialization, donggyun.kim@lge.com, 01/02/2012 */
+	//pm8xxx_vib_enable(&vib->timed_dev, pdata->initial_vibrate_ms);
+#else
 	pm8xxx_vib_enable(&vib->timed_dev, pdata->initial_vibrate_ms);
+#endif
 
 	platform_set_drvdata(pdev, vib);
 

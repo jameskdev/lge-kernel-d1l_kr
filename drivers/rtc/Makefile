@@ -106,6 +106,11 @@ obj-$(CONFIG_RTC_DRV_TEGRA)	+= rtc-tegra.o
 obj-$(CONFIG_RTC_DRV_TEST)	+= rtc-test.o
 obj-$(CONFIG_RTC_DRV_TILE)	+= rtc-tile.o
 obj-$(CONFIG_RTC_DRV_TWL4030)	+= rtc-twl.o
+# LGE_CHANGE
+# secureclock returns offset between rtc and changed time.
+# this feature ported by brad.han@lge.com. I got the source code from P2
+# 2012-01-12, james.jang@lge.com
+obj-$(CONFIG_RTC_INTF_DRM_DEV) 	+= drm-dev.o 
 obj-$(CONFIG_RTC_DRV_TX4939)	+= rtc-tx4939.o
 obj-$(CONFIG_RTC_DRV_V3020)	+= rtc-v3020.o
 obj-$(CONFIG_RTC_DRV_VR41XX)	+= rtc-vr41xx.o

@@ -49,10 +49,19 @@ static void __mdp_outp(uint32 port, uint32 value)
 #define MDP_OUTP(port, value)	__mdp_outp((uint32)(port), (value))
 #endif
 
+#define QCT_PATCH
+
 static int first_pixel_start_x;
 static int first_pixel_start_y;
 
 static struct mdp4_overlay_pipe *dtv_pipe;
+
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+int mdp4_dtv_start_status = 0;
+#endif
 
 static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
 {
@@ -199,6 +208,13 @@ static int mdp4_dtv_start(struct msm_fb_data_type *mfd)
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+	mdp4_dtv_start_status = 1;
+#endif
+
 	return 0;
 }
 
@@ -213,6 +229,13 @@ static int mdp4_dtv_stop(struct msm_fb_data_type *mfd)
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_pipe_ctrl(MDP_OVERLAY1_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+
+#ifdef CONFIG_MACH_LGE
+/* LGE, Solve the HW Reset that occurs due to dtv_on/off during HDCP Auth.
+ * 2012-04-13, jongyeol.yang@lge.com
+ */
+	mdp4_dtv_start_status = 0;
+#endif
 
 	return 0;
 }
@@ -288,6 +311,7 @@ static void mdp4_overlay_dtv_alloc_pipe(struct msm_fb_data_type *mfd,
 
 	if (ptype == OVERLAY_TYPE_BF) {
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+
 		/* LSP_BORDER_COLOR */
 		MDP_OUTP(MDP_BASE + MDP4_OVERLAYPROC1_BASE + 0x5004,
 			((0x0 & 0xFFF) << 16) |	/* 12-bit B */
@@ -295,7 +319,14 @@ static void mdp4_overlay_dtv_alloc_pipe(struct msm_fb_data_type *mfd,
 		/* MSP_BORDER_COLOR */
 		MDP_OUTP(MDP_BASE + MDP4_OVERLAYPROC1_BASE + 0x5008,
 			(0x0 & 0xFFF));		/* 12-bit R */
+
+/* LGE : After MHL cable disconnected, the mdp clock must be removed
+  * QCT Patch*/
+#ifdef CONFIG_MACH_LGE
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+#else
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+#endif
 	} else {
 		switch (mfd->ibuf.bpp) {
 		case 2:
@@ -335,8 +366,13 @@ static void mdp4_overlay_dtv_alloc_pipe(struct msm_fb_data_type *mfd,
 	}
 
 	mdp4_mixer_stage_up(pipe);
+	/* LGE_CHANGE
+	 * Add QCT patches for blue screen issue after 1041 patches
+	 * 2012-03-15, baryun.hwang@lge.com
+	 */
+#ifdef QCT_PATCH
 	mdp4_overlay_reg_flush(pipe, 1);
-
+#endif
 	dtv_pipe = pipe; /* keep it */
 }
 
@@ -433,6 +469,15 @@ static void mdp4_overlay_dtv_ov_start(struct msm_fb_data_type *mfd)
 	if (mfd->ov_start)
 		return;
 
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe) {
+		pr_debug("%s: no mixer1 base layer pipe allocated!\n",
+			 __func__);
+		return;
+	}
+#endif
+
 	if (dtv_pipe->blt_addr) {
 		mdp4_dtv_blt_ov_update(dtv_pipe);
 		dtv_pipe->ov_cnt++;
@@ -461,6 +506,16 @@ static void mdp4_overlay_dtv_wait4_ov_done(struct msm_fb_data_type *mfd,
 		return;
 	if (!(data & 0x1) || (pipe == NULL))
 		return;
+
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe) {
+		pr_debug("%s: no mixer1 base layer pipe allocated!\n",
+			 __func__);
+		return;
+	}
+#endif
+
 	wait_for_completion_timeout(&dtv_pipe->comp,
 			msecs_to_jiffies(VSYNC_PERIOD*2));
 	mdp_disable_irq(MDP_OVERLAY1_TERM);
@@ -490,6 +545,12 @@ void mdp4_overlay_dtv_wait_for_ov(struct msm_fb_data_type *mfd,
 
 void mdp4_dma_e_done_dtv()
 {
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe)
+		return;
+#endif
+
 	complete(&dtv_pipe->comp);
 }
 
@@ -503,6 +564,12 @@ void mdp4_external_vsync_dtv()
  */
 void mdp4_overlay1_done_dtv()
 {
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe)
+		return;
+#endif
+
 	if (dtv_pipe->blt_addr) {
 		mdp4_dtv_blt_dmae_update(dtv_pipe);
 		dtv_pipe->dmae_cnt++;
@@ -535,13 +602,26 @@ void mdp4_dtv_set_black_screen(void)
 	*/
 	temp_src_format = inpdw(rgb_base + 0x0050);
 	MDP_OUTP(rgb_base + 0x0050, temp_src_format | BIT(22));
+#ifdef QCT_PATCH
 	mdp4_overlay_reg_flush(dtv_pipe, 0);
+#else
+	mdp4_mixer_stage_up(pipe);
+#endif
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 }
 
 static void mdp4_overlay_dtv_wait4dmae(struct msm_fb_data_type *mfd)
 {
 	unsigned long flag;
+
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe) {
+		pr_debug("%s: no mixer1 base layer pipe allocated!\n",
+			 __func__);
+		return;
+	}
+#endif
 
 	/* enable irq */
 	spin_lock_irqsave(&mdp_spin_lock, flag);
@@ -565,6 +645,15 @@ static void mdp4_dtv_do_blt(struct msm_fb_data_type *mfd, int enable)
 		pr_debug("%s: no writeback buf assigned\n", __func__);
 		return;
 	}
+
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe) {
+		pr_debug("%s: no mixer1 base layer pipe allocated!\n",
+			 __func__);
+		return;
+	}
+#endif
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (enable && dtv_pipe->blt_addr == 0) {
@@ -607,6 +696,15 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 
 	if (!mfd->panel_power_on)
 		return;
+
+#ifdef CONFIG_MACH_LGE
+/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+	if (!dtv_pipe) {
+		pr_debug("%s: no mixer1 base layer pipe allocated!\n",
+			 __func__);
+		return;
+	}
+#endif
 
 	mutex_lock(&mfd->dma->ov_mutex);
 	if (dtv_pipe == NULL) {

@@ -20,6 +20,16 @@
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/mfd/pm8xxx/rtc.h>
 
+#if defined(CONFIG_RTC_INTF_DRM_DEV)
+	/* LGE_CHANGE
+	 * secureclock returns offset between rtc and changed time.
+	 * this feature ported by brad.han@lge.com. I got the source code from P2
+	 * 2012-01-12, james.jang@lge.com
+	 */
+#include <linux/semaphore.h>
+#include <linux/sched.h>
+#include <drm/drm.h>
+#endif
 
 /* RTC Register offsets from RTC CTRL REG */
 #define PM8XXX_ALARM_CTRL_OFFSET 0x01
@@ -52,6 +62,19 @@ struct pm8xxx_rtc {
 	struct device *rtc_dev;
 	spinlock_t ctrl_reg_lock;
 };
+
+#if defined(CONFIG_RTC_INTF_DRM_DEV)
+	/* LGE_CHANGE
+	 * secureclock returns offset between rtc and changed time.
+	 * this feature ported by brad.han@lge.com. I got the source code from P2
+	 * 2012-01-12, james.jang@lge.com
+	 */
+extern wait_queue_head_t drm_wait_queue;
+extern unsigned long drm_diff_time;
+extern int drm_sign;
+extern struct spinlock drm_lock;
+static int pm8xxx_rtc_read_time(struct device *dev, struct rtc_time *tm);
+#endif
 
 /*
  * The RTC registers need to be read/written one byte at a time. This is a
@@ -107,6 +130,47 @@ pm8xxx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	unsigned long secs, irq_flags;
 	u8 value[4], reg = 0, alarm_enabled = 0, ctrl_reg;
 	struct pm8xxx_rtc *rtc_dd = dev_get_drvdata(dev);
+
+	#if defined(CONFIG_RTC_INTF_DRM_DEV)
+	/* LGE_CHANGE
+	 * secureclock returns offset between rtc and changed time.
+	 * this feature ported by brad.han@lge.com. I got the source code from P2
+	 * 2012-01-12, james.jang@lge.com
+	 */
+	int ret;
+	struct rtc_time tm_temp;
+	unsigned long prev_time, now;
+
+	ret = rtc_tm_to_time(tm, &now);
+	if(ret != 0)
+		return -1;
+
+	/* read time */
+	if(pm8xxx_rtc_read_time(dev, &tm_temp) != 0)
+	{
+		printk("pm8xxx_rtc_read_time() failed\n");
+		return -1;
+	}
+
+	ret = rtc_tm_to_time(&tm_temp, &prev_time);
+	if(ret != 0)
+		return -1;
+
+	spin_lock(&drm_lock);
+	if(now < prev_time)
+	{
+		drm_diff_time = prev_time - now;
+		drm_sign = 1;
+	}
+	else
+	{
+		drm_diff_time = now - prev_time;
+		drm_sign = -1;
+	}
+	spin_unlock(&drm_lock);
+	wake_up_interruptible(&drm_wait_queue);
+	#endif
+
 
 	rtc_tm_to_time(tm, &secs);
 
@@ -477,6 +541,14 @@ static int __devinit pm8xxx_rtc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, rtc_dd);
 
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	 * device wakeup initialization should be done before calling
+	 * rtc_device_register(). This is QCT's mistake.
+	 * 2012-01-08, cleaneye.kim@lge.com
+	 */
+	device_init_wakeup(&pdev->dev, 1);
+#endif
 	/* Register the RTC device */
 	rtc_dd->rtc = rtc_device_register("pm8xxx_rtc", &pdev->dev,
 				&pm8xxx_rtc_ops, THIS_MODULE);
@@ -496,7 +568,14 @@ static int __devinit pm8xxx_rtc_probe(struct platform_device *pdev)
 		goto fail_req_irq;
 	}
 
+#ifndef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	 * device wakeup initialization should be done before calling
+	 * rtc_device_register(). This is QCT's mistake.
+	 * 2012-01-08, cleaneye.kim@lge.com
+	 */
 	device_init_wakeup(&pdev->dev, 1);
+#endif
 
 	dev_dbg(&pdev->dev, "Probe success !!\n");
 

@@ -469,6 +469,7 @@ static struct platform_device ion_dev = {
 	.id = 1,
 	.dev = { .platform_data = &ion_pdata },
 };
+//added subsystem platform devices for ehgrace.kim@lge.com
 #endif
 
 struct platform_device fmem_device = {
@@ -725,7 +726,7 @@ static struct reserve_info msm8960_reserve_info __initdata = {
 	.reserve_fixed_area = msm8960_reserve_fixed_area,
 	.paddr_to_memtype = msm8960_paddr_to_memtype,
 };
-
+//added adsp 
 static int msm8960_memory_bank_size(void)
 {
 	return 1<<29;

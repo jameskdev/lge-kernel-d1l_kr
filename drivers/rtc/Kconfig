@@ -1142,4 +1142,16 @@ config RTC_DRV_PM8XXX
 	  To compile this driver as a module, choose M here: the
 	  module will be called rtc-pm8xxx.
 
+# LGE_CHANGE
+# secureclock returns offset between rtc and changed time.
+# this feature ported by brad.han@lge.com. I got the source code from P2
+# 2012-01-12, james.jang@lge.com
+config RTC_INTF_DRM_DEV
+	bool "Android drm device"
+	depends on RTC_DRV_PM8XXX
+	default n
+	help
+	  Exports the drm interface to user-space.
+
+
 endif # RTC_CLASS

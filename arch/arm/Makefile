@@ -234,6 +234,7 @@ platdirs := $(patsubst %,arch/arm/plat-%/,$(plat-y))
 
 ifeq ($(KBUILD_SRC),)
 KBUILD_CPPFLAGS += $(patsubst %,-I%include,$(machdirs) $(platdirs))
+KBUILD_CPPFLAGS += $(patsubst %,-I%, $(machdirs) $(platdirs))
 else
 KBUILD_CPPFLAGS += $(patsubst %,-I$(srctree)/%include,$(machdirs) $(platdirs))
 endif

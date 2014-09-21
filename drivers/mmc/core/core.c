@@ -1083,7 +1083,16 @@ void mmc_power_up(struct mmc_host *host)
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
+
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Augmenting delay-time for some crappy card.
+	* 2011-11-10, warkap.seo@lge.com 
+	*/
+	mmc_delay(20);
+#else
 	mmc_delay(10);
+#endif
 
 	host->ios.clock = host->f_init;
 
@@ -1094,7 +1103,15 @@ void mmc_power_up(struct mmc_host *host)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Augmenting delay-time for some crappy card.
+	* 2011-11-10, warkap.seo@lge.com 
+	*/
+	mmc_delay(20);
+#else
 	mmc_delay(10);
+#endif
 
 	mmc_host_clk_release(host);
 }
@@ -1219,8 +1236,7 @@ void mmc_attach_bus(struct mmc_host *host, const struct mmc_bus_ops *ops)
 }
 
 /*
- * Remove the current bus handler from a host. Assumes that there are
- * no interesting cards left, so the bus is powered down.
+ * Remove the current bus handler from a host.
  */
 void mmc_detach_bus(struct mmc_host *host)
 {
@@ -1237,8 +1253,6 @@ void mmc_detach_bus(struct mmc_host *host)
 
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	mmc_power_off(host);
-
 	mmc_bus_put(host);
 }
 
@@ -1254,6 +1268,14 @@ void mmc_detach_bus(struct mmc_host *host)
  */
 void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 {
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Checking for result of delayed-work.
+	* 2011-11-10, warkap.seo@lge.com
+	*/
+	int result_delayed_work = -1;
+#endif
+
 #ifdef CONFIG_MMC_DEBUG
 	unsigned long flags;
 	spin_lock_irqsave(&host->lock, flags);
@@ -1263,7 +1285,16 @@ void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 
 	wake_lock(&host->detect_wake_lock);
 	host->detect_change = 1;
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Checking for result of delayed-work.
+	* 2011-11-10, warkap.seo@lge.com
+	*/
+	result_delayed_work = mmc_schedule_delayed_work(&host->detect, delay);
+	printk(KERN_INFO "[LGE][mmc][%-18s( )] result_delayed_work:%d, delay:%ld\n", __func__, result_delayed_work, delay);
+#else
 	mmc_schedule_delayed_work(&host->detect, delay);
+#endif
 }
 
 EXPORT_SYMBOL(mmc_detect_change);
@@ -1509,7 +1540,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 			goto out;
 		}
 	} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
-		 R1_CURRENT_STATE(cmd.resp[0]) == 7);
+		 R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG);
 out:
 	return err;
 }
@@ -1714,6 +1745,14 @@ void mmc_rescan(struct work_struct *work)
 		container_of(work, struct mmc_host, detect.work);
 	bool extend_wakelock = false;
 
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Adding Print
+	* 2011-11-10, warkap.seo@lge.com
+	*/
+	printk(KERN_INFO "[LGE][MMC][%-18s( ) START!] \n", __func__);
+#endif
+
 	if (host->rescan_disable)
 		return;
 
@@ -1804,6 +1843,7 @@ void mmc_stop_host(struct mmc_host *host)
 
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
+		mmc_power_off(host);
 		mmc_release_host(host);
 		mmc_bus_put(host);
 		return;
@@ -2050,6 +2090,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			host->bus_ops->remove(host);
 
 		mmc_detach_bus(host);
+		mmc_power_off(host);
 		mmc_release_host(host);
 		host->pm_flags = 0;
 		break;

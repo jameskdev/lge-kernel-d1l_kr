@@ -501,7 +501,17 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 	ret = afe_q6_interface_prepare();
 	if (ret != 0)
 		return ret;
-
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+	if (port_id == HDMI_RX) {
+		config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
+	config.hdr.src_port = 0;
+	config.hdr.dest_port = 0;
+	config.hdr.token = 0;
+		config.hdr.opcode = AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG;
+	} else	{
+#endif
 	config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
@@ -509,6 +519,9 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 	config.hdr.dest_port = 0;
 	config.hdr.token = 0;
 	config.hdr.opcode = AFE_PORT_AUDIO_IF_CONFIG;
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+	}
+#endif
 
 	if (afe_validate_port(port_id) < 0) {
 
@@ -1529,6 +1542,19 @@ static int __init afe_init(void)
 	atomic_set(&this_afe.status, 0);
 	this_afe.apr = NULL;
 #ifdef CONFIG_DEBUG_FS
+#ifdef CONFIG_LGE_AUDIO
+	/*
+	 * permission is changed S_IWUGO => S_IWUSR | S_IWGRP
+	 * bob.cho@lge.com, 02/07/2012
+	 */
+	debugfs_afelb = debugfs_create_file("afe_loopback",
+	S_IFREG | S_IWUSR | S_IWGRP, NULL, (void *) "afe_loopback",
+	&afe_debug_fops);
+
+	debugfs_afelb_gain = debugfs_create_file("afe_loopback_gain",
+	S_IFREG | S_IWUSR | S_IWGRP, NULL, (void *) "afe_loopback_gain",
+	&afe_debug_fops);
+#else
 	debugfs_afelb = debugfs_create_file("afe_loopback",
 	S_IFREG | S_IWUGO, NULL, (void *) "afe_loopback",
 	&afe_debug_fops);
@@ -1536,6 +1562,7 @@ static int __init afe_init(void)
 	debugfs_afelb_gain = debugfs_create_file("afe_loopback_gain",
 	S_IFREG | S_IWUGO, NULL, (void *) "afe_loopback_gain",
 	&afe_debug_fops);
+#endif
 
 
 #endif

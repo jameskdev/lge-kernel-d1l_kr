@@ -47,6 +47,7 @@ enum format {
 };
 
 
+#define LGE_FW_WORKAROUND // mint.choi@lge.com, 2012/04/04, pcm crash fix LGE
 enum amr_rate_type {
 	AMR_RATE_4750, /* AMR 4.75 kbps */
 	AMR_RATE_5150, /* AMR 5.15 kbps */
@@ -194,10 +195,23 @@ static int msm_voip_volume_put(struct snd_kcontrol *kcontrol,
 			     volume);
 	return 0;
 }
+
 static int msm_voip_volume_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
 	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static int msm_voip_dtx_mode_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	mutex_lock(&voip_info.lock);
+
+	ucontrol->value.integer.value[0] = voip_info.dtx_mode;
+
+	mutex_unlock(&voip_info.lock);
+
 	return 0;
 }
 
@@ -214,18 +228,35 @@ static int msm_voip_dtx_mode_put(struct snd_kcontrol *kcontrol,
 
 	return 0;
 }
-static int msm_voip_dtx_mode_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	mutex_lock(&voip_info.lock);
 
-	ucontrol->value.integer.value[0] = voip_info.dtx_mode;
-
-	mutex_unlock(&voip_info.lock);
-
-	return 0;
-}
-
+//[AUDIO_BSP] 20120213, mint.choi@lge.com, modified voip volume level for domestic models
+#if defined(CONFIG_MACH_MSM8960_D1LSK) || defined(CONFIG_MACH_MSM8960_D1LKT) || defined(CONFIG_MACH_MSM8960_D1LU)
+static struct snd_kcontrol_new msm_voip_controls[] = {
+	SOC_SINGLE_EXT("Voip Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_voip_mute_get, msm_voip_mute_put),
+	SOC_SINGLE_EXT("Voip Rx Volume", SND_SOC_NOPM, 0, 9, 0,
+				msm_voip_volume_get, msm_voip_volume_put),
+	SOC_SINGLE_MULTI_EXT("Voip Mode Rate Config", SND_SOC_NOPM, 0, 23850,
+				0, 2, msm_voip_mode_rate_config_get,
+				msm_voip_mode_rate_config_put),
+	SOC_SINGLE_EXT("Voip Dtx Mode", SND_SOC_NOPM, 0, 1, 0,
+				msm_voip_dtx_mode_get, msm_voip_dtx_mode_put),
+};
+//[AUDIO_BSP]_START, 20120307, junday.lee, modified voip volume level(6->7) for Metro-PCS, D1LA, D1LV, L_DCM
+#elif defined(CONFIG_MACH_MSM8960_L0) || defined(CONFIG_MACH_MSM8960_D1LV) || defined(CONFIG_MACH_MSM8960_D1LA) || defined(CONFIG_MACH_MSM8960_L_DCM) || defined(CONFIG_MACH_MSM8960_L1A)
+static struct snd_kcontrol_new msm_voip_controls[] = {
+	SOC_SINGLE_EXT("Voip Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_voip_mute_get, msm_voip_mute_put),
+	SOC_SINGLE_EXT("Voip Rx Volume", SND_SOC_NOPM, 0, 6, 0,
+				msm_voip_volume_get, msm_voip_volume_put),
+	SOC_SINGLE_MULTI_EXT("Voip Mode Rate Config", SND_SOC_NOPM, 0, 23850,
+				0, 2, msm_voip_mode_rate_config_get,
+				msm_voip_mode_rate_config_put),
+	SOC_SINGLE_EXT("Voip Dtx Mode", SND_SOC_NOPM, 0, 1, 0,
+				msm_voip_dtx_mode_get, msm_voip_dtx_mode_put),
+};
+//[AUDIO_BSP]_END, 20120307, junday.lee
+#else
 static struct snd_kcontrol_new msm_voip_controls[] = {
 	SOC_SINGLE_EXT("Voip Tx Mute", SND_SOC_NOPM, 0, 1, 0,
 				msm_voip_mute_get, msm_voip_mute_put),
@@ -237,7 +268,7 @@ static struct snd_kcontrol_new msm_voip_controls[] = {
 	SOC_SINGLE_EXT("Voip Dtx Mode", SND_SOC_NOPM, 0, 1, 0,
 				msm_voip_dtx_mode_get, msm_voip_dtx_mode_put),
 };
-
+#endif
 static int msm_pcm_voip_probe(struct snd_soc_platform *platform)
 {
 	snd_soc_add_platform_controls(platform, msm_voip_controls,
@@ -300,7 +331,7 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 		snd_pcm_period_elapsed(prtd->capture_substream);
 	} else {
 		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
-		pr_err("UL data dropped\n");
+		pr_debug("UL data dropped\n");
 	}
 
 	wake_up(&prtd->out_wait);
@@ -360,7 +391,7 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt,
 	} else {
 		*pkt_len = 0;
 		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
-		pr_err("DL data not available\n");
+		pr_debug("DL data not available\n");
 	}
 	wake_up(&prtd->in_wait);
 }
@@ -474,7 +505,10 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 	struct voip_buf_node *buf_node = NULL;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct voip_drv_info *prtd = runtime->private_data;
-
+#ifdef LGE_FW_WORKAROUND
+	unsigned long dsp_flags;
+#endif
+	
 	int count = frames_to_bytes(runtime, frames);
 	pr_debug("%s: count = %d, frames=%d\n", __func__, count, (int)frames);
 
@@ -483,7 +517,11 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 				prtd->state == VOIP_STOPPED),
 				1 * HZ);
 	if (ret > 0) {
+#ifndef LGE_FW_WORKAROUND
 		mutex_lock(&prtd->in_lock);
+#else
+		spin_lock_irqsave(&prtd->dsp_lock, dsp_flags);
+#endif
 		if (count <= VOIP_MAX_VOC_PKT_SIZE) {
 			buf_node =
 				list_first_entry(&prtd->free_in_queue,
@@ -503,7 +541,11 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 			ret = -ENOMEM;
 		}
 
+#ifdef LGE_FW_WORKAROUND
+		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags); 
+#else
 		mutex_unlock(&prtd->in_lock);
+#endif
 	} else if (ret == 0) {
 		pr_err("%s: No free DL buffs\n", __func__);
 		ret = -ETIMEDOUT;
@@ -522,7 +564,9 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 	struct voip_buf_node *buf_node = NULL;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct voip_drv_info *prtd = runtime->private_data;
-
+#ifdef LGE_FW_WORKAROUND
+	unsigned long dsp_flags; 
+#endif
 	count = frames_to_bytes(runtime, frames);
 
 	pr_debug("%s: count = %d\n", __func__, count);
@@ -533,7 +577,11 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 				1 * HZ);
 
 	if (ret > 0) {
+#ifndef LGE_FW_WORKAROUND
 		mutex_lock(&prtd->out_lock);
+#else
+		spin_lock_irqsave(&prtd->dsp_lock, dsp_flags); 
+#endif
 
 		if (count <= VOIP_MAX_VOC_PKT_SIZE) {
 			buf_node = list_first_entry(&prtd->out_queue,
@@ -560,7 +608,11 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 			ret = -ENOMEM;
 		}
 
+#ifdef LGE_FW_WORKAROUND
+		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
+#else
 		mutex_unlock(&prtd->out_lock);
+#endif
 
 	} else if (ret == 0) {
 		pr_err("%s: No UL data available\n", __func__);
@@ -583,7 +635,137 @@ static int msm_pcm_copy(struct snd_pcm_substream *substream, int a,
 
 	return ret;
 }
+#ifdef LGE_FW_WORKAROUND
+static int msm_pcm_close(struct snd_pcm_substream *substream)
+{
+	int ret = 0;
+	struct list_head *ptr = NULL;
+	struct list_head *next = NULL;
+	struct voip_buf_node *buf_node = NULL;
+	struct snd_dma_buffer *p_dma_buf, *c_dma_buf;
+	struct snd_pcm_substream *p_substream, *c_substream;
+	struct snd_pcm_runtime *runtime;
+	struct voip_drv_info *prtd;
+	unsigned long dsp_flags; 
+	
+	if (substream == NULL) {
+		pr_err("substream is NULL\n");
+		return -EINVAL;
+	}
+	runtime = substream->runtime;
+	prtd = runtime->private_data;
 
+	wake_up(&prtd->out_wait);
+
+	mutex_lock(&prtd->lock);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		prtd->playback_instance--;
+	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		prtd->capture_instance--;
+
+	if (!prtd->playback_instance && !prtd->capture_instance) {
+		if (prtd->state == VOIP_STARTED) {
+			prtd->state = VOIP_STOPPED;
+			voc_end_voice_call(
+					voc_get_session_id(VOIP_SESSION_NAME));
+			voc_register_mvs_cb(NULL, NULL, prtd);
+		}
+		/* release all buffer */
+		/* release in_queue and free_in_queue */
+		pr_debug("release all buffer\n");
+
+		spin_lock_irqsave(&prtd->dsp_lock, dsp_flags); // LGE
+
+		p_substream = prtd->playback_substream;
+		if (p_substream == NULL) {
+			pr_debug("p_substream is NULL\n");
+			goto capt;
+		}
+		p_dma_buf = &p_substream->dma_buffer;
+		if (p_dma_buf == NULL) {
+			pr_debug("p_dma_buf is NULL\n");
+			goto capt;
+		}
+		if (p_dma_buf->area != NULL) {
+			list_for_each_safe(ptr, next, &prtd->in_queue) {
+				buf_node = list_entry(ptr,
+						struct voip_buf_node, list);
+				list_del(&buf_node->list);
+			}
+			list_for_each_safe(ptr, next, &prtd->free_in_queue) {
+				buf_node = list_entry(ptr,
+						struct voip_buf_node, list);
+				list_del(&buf_node->list);
+			}
+		}
+		/* release out_queue and free_out_queue */
+capt:		c_substream = prtd->capture_substream;
+		if (c_substream == NULL) {
+			pr_debug("c_substream is NULL\n");
+			goto done;
+		}
+		c_dma_buf = &c_substream->dma_buffer;
+		if (c_substream == NULL) {
+			pr_debug("c_dma_buf is NULL.\n");
+			goto done;
+		}
+		if (c_dma_buf->area != NULL) {
+			list_for_each_safe(ptr, next, &prtd->free_out_queue) { 
+				buf_node = list_entry(ptr,
+						struct voip_buf_node, list);
+				list_del(&buf_node->list);
+			}
+			list_for_each_safe(ptr, next, &prtd->out_queue) { 
+				buf_node = list_entry(ptr,
+						struct voip_buf_node, list);
+				list_del(&buf_node->list);
+			}
+		}
+done:
+		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags); // LGE
+		p_dma_buf = (prtd->playback_substream==NULL)?NULL:&prtd->playback_substream->dma_buffer ;
+		/* LGE_CHANGE
+		 * 20120426, cheolyong.yu@lge.com
+		 * Defense code to prevent null point reference
+		 */
+		// if( p_dma_buf->area != NULL ) {
+		if( p_dma_buf != NULL && p_dma_buf->area != NULL ) {
+//			mutex_lock(&voip_info.lock);  << this info is same with prtd
+			mutex_lock(&prtd->in_lock);
+			dma_free_coherent(p_substream->pcm->card->dev,
+				runtime->hw.buffer_bytes_max, p_dma_buf->area,
+				p_dma_buf->addr);
+			p_dma_buf->area = NULL;
+			mutex_unlock(&prtd->in_lock); 
+//			mutex_unlock(&voip_info.lock); << this info is same with prtd
+		}
+
+		c_dma_buf = (prtd->capture_substream==NULL)?NULL:&prtd->capture_substream->dma_buffer ;
+		/* LGE_CHANGE
+		 * 20120426, cheolyong.yu@lge.com
+		 * Defense code to prevent null point reference
+		 */
+		// if( c_dma_buf->area != NULL ) {
+		if( c_dma_buf != NULL && c_dma_buf->area != NULL ) {
+//			mutex_lock(&voip_info.lock);<< this info is same with prtd
+			mutex_lock(&prtd->out_lock); 
+			dma_free_coherent(c_substream->pcm->card->dev,
+				runtime->hw.buffer_bytes_max, c_dma_buf->area,
+				c_dma_buf->addr);
+			c_dma_buf->area = NULL;
+			mutex_unlock(&prtd->out_lock);
+//			mutex_unlock(&voip_info.lock);<< this info is same with prtd
+		}
+
+		prtd->capture_substream = NULL;
+		prtd->playback_substream = NULL;
+	}
+	mutex_unlock(&prtd->lock);
+
+	return ret;
+}
+#else
 static int msm_pcm_close(struct snd_pcm_substream *substream)
 {
 	int ret = 0;
@@ -686,6 +868,7 @@ done:
 
 	return ret;
 }
+#endif
 static int msm_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	int ret = 0;

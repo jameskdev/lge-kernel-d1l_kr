@@ -92,8 +92,15 @@ static int mipi_dsi_off(struct platform_device *pdev)
 			mdp3_dsi_cmd_dma_busy_wait(mfd);
 		}
 	} else {
+		/* LGE_CHANGE
+		 * Due to blocking during suspend sequence,
+		 * we block this code.
+		 * 2012-04-24, baryun.hwang@lge.com
+		 */
+#ifndef CONFIG_MACH_LGE
 		/* video mode, wait until fifo cleaned */
 		mipi_dsi_controller_cfg(0);
+#endif
 	}
 
 	/*
@@ -187,7 +194,17 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	width = mfd->panel_info.xres;
 	height = mfd->panel_info.yres;
 
+/*
+ * Fix kernel boot logo is not displayed.
+ * 2012-01-04, kyunghoo.ryu@lge.com
+ */
+ if(system_state == SYSTEM_BOOTING) {
+	mipi_dsi_phy_ctrl(0);
+	mdelay(1);
 	mipi_dsi_phy_ctrl(1);
+ } else {
+	mipi_dsi_phy_ctrl(1);
+ }
 
 	if (mdp_rev == MDP_REV_42 && mipi_dsi_pdata)
 		target_type = mipi_dsi_pdata->target_type;

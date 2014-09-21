@@ -31,7 +31,7 @@
 #include "msm_fb.h"
 #include "mdp4.h"
 
-
+#define QCT_PATCH
 static struct mdp4_overlay_pipe *atv_pipe;
 
 int mdp4_atv_on(struct platform_device *pdev)
@@ -108,9 +108,13 @@ int mdp4_atv_on(struct platform_device *pdev)
 	mdp4_mixer_stage_up(pipe);
 
 	mdp4_overlayproc_cfg(pipe);
-
+	/* LGE_CHANGE
+	 * Add QCT patches for blue screen issue after 1041 patches
+	 * 2012-03-15, baryun.hwang@lge.com
+	 */
+#ifdef QCT_PATCH
 	mdp4_overlay_reg_flush(pipe, 1);
-
+#endif
 	if (ret == 0)
 		mdp_pipe_ctrl(MDP_OVERLAY1_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
@@ -169,8 +173,9 @@ void mdp4_atv_overlay(struct msm_fb_data_type *mfd)
 	pipe->srcp0_addr = (uint32) buf;
 	mdp4_overlay_rgb_setup(pipe);
 	mdp4_mixer_stage_up(pipe);
+#ifdef QCT_PATCH
 	mdp4_overlay_reg_flush(pipe, 0);
-
+#endif
 	printk(KERN_INFO "mdp4_atv_overlay: pipe=%x ndx=%d\n",
 					(int)pipe, pipe->pipe_ndx);
 

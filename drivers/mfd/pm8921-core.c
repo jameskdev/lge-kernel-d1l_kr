@@ -23,6 +23,7 @@
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/mfd/pm8xxx/regulator.h>
+#include <linux/mfd/pm8xxx/direct_qcoin.h>
 #include <linux/leds-pm8xxx.h>
 
 #define REG_HWREV		0x002  /* PMIC4 revision */
@@ -720,6 +721,18 @@ pm8921_add_subdevices(const struct pm8921_platform_data *pdata,
 		}
 	}
 
+	if (pdata->pm8xxx_qcoin_pdata) {
+		vibrator_cell.platform_data = pdata->pm8xxx_qcoin_pdata;
+		vibrator_cell.pdata_size =
+				sizeof(struct direct_qcoin_platform_data);
+		ret = mfd_add_devices(pmic->dev, 0, &vibrator_cell, 1, NULL, 0);
+		if (ret) {
+			pr_err("Failed to add vibrator subdevice ret=%d\n",
+									ret);
+			goto bail;
+		}
+	}
+
 	if (pdata->ccadc_pdata) {
 		ccadc_cell.platform_data = pdata->ccadc_pdata;
 		ccadc_cell.pdata_size =
@@ -836,6 +849,20 @@ static int __devinit pm8921_probe(struct platform_device *pdev)
 	}
 	val &= PM8921_RESTART_REASON_MASK;
 	pr_info("PMIC Restart Reason: %s\n", pm8921_restart_reason[val]);
+
+	/* Set power-on-reset to 3 seconds */
+/* LGE_CHANGE
+ * TODO : it should be enabled after investigating with QCT
+ * 2011-12-29, kidong0420.kim@lge.com
+ */
+ /*
+	val = 0xBB;
+	rc = msm_ssbi_write(pdev->dev.parent, REG_PM8921_PON_CNTRL_4, &val, 1);
+	if (rc) {
+		pr_err("Cannot write power-on-reset rc=%d\n", rc);
+		goto err;
+	}
+*/
 
 	rc = pm8921_add_subdevices(pdata, pmic);
 	if (rc) {

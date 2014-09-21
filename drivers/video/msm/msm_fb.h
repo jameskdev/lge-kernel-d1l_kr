@@ -50,6 +50,9 @@
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
 
+/* QCT patch for video quantization issue */
+#define HDMI_VIDEO_QUANTIZATION_ISSUE
+
 struct disp_info_type_suspend {
 	boolean op_enable;
 	boolean sw_refreshing_enable;

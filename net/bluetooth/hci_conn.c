@@ -225,6 +225,7 @@ void hci_le_conn_update(struct hci_conn *conn, u16 min, u16 max,
 }
 EXPORT_SYMBOL(hci_le_conn_update);
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 void hci_read_rssi(struct hci_conn *conn)
 {
 	struct hci_cp_read_rssi cp;
@@ -236,6 +237,7 @@ void hci_read_rssi(struct hci_conn *conn)
 	hci_send_cmd(hdev, HCI_OP_READ_RSSI, sizeof(cp), &cp);
 }
 EXPORT_SYMBOL(hci_read_rssi);
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
 							__u8 ltk[16])
@@ -352,6 +354,7 @@ static void hci_conn_idle(unsigned long arg)
 	hci_conn_enter_sniff_mode(conn);
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 static void hci_conn_rssi_update(struct work_struct *work)
 {
 	struct delayed_work *delayed =
@@ -363,6 +366,7 @@ static void hci_conn_rssi_update(struct work_struct *work)
 
 	hci_read_rssi(conn);
 }
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type,
 					__u16 pkt_type, bdaddr_t *dst)
@@ -416,7 +420,9 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type,
 
 	setup_timer(&conn->disc_timer, hci_conn_timeout, (unsigned long)conn);
 	setup_timer(&conn->idle_timer, hci_conn_idle, (unsigned long)conn);
+// +s QCT_BT_COMMON_PATCH_SBA1044
 	INIT_DELAYED_WORK(&conn->rssi_update_work, hci_conn_rssi_update);
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 	atomic_set(&conn->refcnt, 0);
 
@@ -459,7 +465,9 @@ int hci_conn_del(struct hci_conn *conn)
 	del_timer(&conn->idle_timer);
 	del_timer(&conn->disc_timer);
 	del_timer(&conn->smp_timer);
+// +s QCT_BT_COMMON_PATCH_SBA1044
 	__cancel_delayed_work(&conn->rssi_update_work);
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 	if (conn->type == ACL_LINK) {
 		struct hci_conn *sco = conn->link;
@@ -754,7 +762,12 @@ void hci_disconnect(struct hci_conn *conn, __u8 reason)
 {
 	BT_DBG("conn %p", conn);
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 	hci_proto_disconn_cfm(conn, reason, 0);
+    /* QCT Original
+	hci_proto_disconn_cfm(conn, reason);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 }
 EXPORT_SYMBOL(hci_disconnect);
 
@@ -814,8 +827,10 @@ static int hci_conn_auth(struct hci_conn *conn, __u8 sec_level, __u8 auth_type)
 	if (!test_and_set_bit(HCI_CONN_AUTH_PEND, &conn->pend)) {
 		struct hci_cp_auth_requested cp;
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 		/* encrypt must be pending if auth is also pending */
 		set_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 		cp.handle = cpu_to_le16(conn->handle);
 		hci_send_cmd(conn->hdev, HCI_OP_AUTH_REQUESTED,
@@ -847,7 +862,12 @@ int hci_conn_security(struct hci_conn *conn, __u8 sec_level, __u8 auth_type)
 		return 0;
 	} else if (conn->link_mode & HCI_LM_ENCRYPT) {
 		return hci_conn_auth(conn, sec_level, auth_type);
+// *s QCT_BT_COMMON_PATCH_SBA1044
 	} else if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
+    /* QCT Original
+	} else if (test_and_set_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 		return 0;
 	}
 
@@ -926,6 +946,7 @@ timer:
 			jiffies + msecs_to_jiffies(hdev->idle_timeout));
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 static inline void hci_conn_stop_rssi_timer(struct hci_conn *conn)
 {
 	BT_DBG("conn %p", conn);
@@ -962,6 +983,7 @@ void hci_conn_unset_rssi_reporter(struct hci_conn *conn)
 		hci_conn_stop_rssi_timer(conn);
 	}
 }
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 /* Enter sniff mode */
 void hci_conn_enter_sniff_mode(struct hci_conn *conn)
@@ -1094,7 +1116,12 @@ void hci_chan_modify(struct hci_chan *chan,
 EXPORT_SYMBOL(hci_chan_modify);
 
 /* Drop all connection on the device */
+// *s QCT_BT_COMMON_PATCH_SBA1044
 void hci_conn_hash_flush(struct hci_dev *hdev, u8 is_process)
+    /* QCT Original
+void hci_conn_hash_flush(struct hci_dev *hdev)
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 {
 	struct hci_conn_hash *h = &hdev->conn_hash;
 	struct list_head *p;
@@ -1110,7 +1137,12 @@ void hci_conn_hash_flush(struct hci_dev *hdev, u8 is_process)
 
 		c->state = BT_CLOSED;
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 		hci_proto_disconn_cfm(c, 0x16, is_process);
+    /* QCT Original
+		hci_proto_disconn_cfm(c, 0x16);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 		hci_conn_del(c);
 	}
 }

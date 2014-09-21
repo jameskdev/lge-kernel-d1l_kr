@@ -965,7 +965,9 @@ static int l2cap_sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct ms
 	else
 		err = bt_sock_recvmsg(iocb, sock, msg, len, flags);
 
+// +s QCT_BT_COMMON_PATCH_SBA1043
 	if (err >= 0)
+// +e QCT_BT_COMMON_PATCH_SBA1043
 		l2cap_ertm_recv_done(sk);
 
 	return err;
@@ -1105,7 +1107,9 @@ static int l2cap_sock_shutdown(struct socket *sock, int how)
 static int l2cap_sock_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	struct sock *srv_sk = NULL;
+// +e QCT_BT_COMMON_PATCH_SBA1042
 	int err;
 
 	BT_DBG("sock %p, sk %p", sock, sk);
@@ -1114,6 +1118,7 @@ static int l2cap_sock_release(struct socket *sock)
 		return 0;
 
 	/* If this is an ATT Client socket, find the matching Server */
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	if (l2cap_pi(sk)->scid == L2CAP_CID_LE_DATA && !l2cap_pi(sk)->incoming)
 		srv_sk = l2cap_find_sock_by_fixed_cid_and_dir(L2CAP_CID_LE_DATA,
 					&bt_sk(sk)->src, &bt_sk(sk)->dst, 1);
@@ -1122,6 +1127,7 @@ static int l2cap_sock_release(struct socket *sock)
 	BT_DBG("client:%p server:%p", sk, srv_sk);
 	if (srv_sk)
 		l2cap_sock_set_timer(srv_sk, 1);
+// +e QCT_BT_COMMON_PATCH_SBA1042
 
 	err = l2cap_sock_shutdown(sock, 2);
 

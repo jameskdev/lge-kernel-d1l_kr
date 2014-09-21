@@ -338,6 +338,17 @@ static void handle_rx(struct uart_port *port, unsigned int misr)
 
 		sr = msm_hsl_read(port, regmap[vid][UARTDM_SR]);
 		if ((sr & UARTDM_SR_RXRDY_BMSK) == 0) {
+/* LGE_CHANGE
+ * In order to avoid old_snap_state be negative,
+ * workaround need to be made.
+ * This seems like a bug by QCT occuring in higher bit-rate (460800 bps)
+ * 2012-03-05, chaeuk.lee@lge.com
+ */
+#ifdef CONFIG_LGE_FELICA
+			if (msm_hsl_port->old_snap_state < count)
+				msm_hsl_port->old_snap_state = 0;
+			else
+#endif /* CONFIG_LGE_FELICA */
 			msm_hsl_port->old_snap_state -= count;
 			break;
 		}
@@ -820,6 +831,17 @@ static void msm_hsl_set_termios(struct uart_port *port,
 	/* calculate and set baud rate */
 	baud = uart_get_baud_rate(port, termios, old, 300, 460800);
 
+/* 20111205, chaeuk.lee@lge.com, Add IrDA UART [START]
+ * Set UART for IrDA
+ * 0x03 : UART_IRDA | RX_INVERT
+ * [CAUTION] UARTDM register must be set AFTER UARTDM clock has been set
+ */
+#ifdef CONFIG_LGE_IRDA
+	if(port->line == 2){
+		msm_hsl_write(port, 0x03, UARTDM_IRDA_ADDR);
+	}
+#endif
+/* 20111205, chaeuk.lee@lge.com, Add IrDA UART [END] */
 	msm_hsl_set_baud_rate(port, baud);
 
 	vid = UART_TO_MSM(port)->ver_id;

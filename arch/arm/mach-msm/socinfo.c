@@ -254,6 +254,36 @@ static struct socinfo_v1 dummy_socinfo = {
 	.build_id = "Dummy socinfo placeholder"
 };
 
+/*LGE_UPDATE_S, jongbum.kim, 20111024 -->[*/
+#ifdef CONFIG_LGE_PM
+u16 *poweron_st = 0;
+uint16_t power_on_status_info_get(void)
+{
+    poweron_st = smem_alloc(SMEM_POWER_ON_STATUS_INFO, sizeof(poweron_st));
+
+    if( poweron_st == NULL ) return 0 ;
+    return *poweron_st;
+}
+EXPORT_SYMBOL(power_on_status_info_get);
+
+#ifdef CONFIG_LGE_PM_BATTERY_ID_CHECKER
+u32 *batt_info = 0;
+uint32_t battery_info_get(void)
+{
+    batt_info = smem_alloc(SMEM_BATT_INFO, sizeof(batt_info));
+
+    if (batt_info == NULL) {
+		pr_err("%s: smem_alloc returns NULL\n", __func__);
+		return 0;
+    }
+
+    return *batt_info;
+}
+EXPORT_SYMBOL(battery_info_get);
+#endif
+#endif
+/*LGE_UPDATE_E,jongbum.kim <--]*/
+
 uint32_t socinfo_get_id(void)
 {
 	return (socinfo) ? socinfo->v1.id : 0;
@@ -269,6 +299,28 @@ char *socinfo_get_build_id(void)
 {
 	return (socinfo) ? socinfo->v1.build_id : NULL;
 }
+
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ */
+#ifdef CONFIG_ARCH_MSM8960
+#include <linux/io.h>
+uint32_t socinfo_get_serial_number(void)
+{
+    uint32_t serial_number;
+    void __iomem *tmp;
+
+    if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) < 2)
+        return 0;
+
+    tmp = ioremap(0x7040B8,0x4);
+    serial_number = (uint32_t)readl(tmp);
+    iounmap(tmp);
+
+	return serial_number;
+}
+#endif
 
 uint32_t socinfo_get_raw_id(void)
 {
@@ -364,6 +416,25 @@ socinfo_show_build_id(struct sys_device *dev,
 
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n", socinfo_get_build_id());
 }
+
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ */
+#ifdef CONFIG_ARCH_MSM8960
+static ssize_t
+socinfo_show_serial_number(struct sys_device *dev,
+		      struct sysdev_attribute *attr,
+		      char *buf)
+{
+	if (!socinfo) {
+		pr_err("%s: No socinfo found!\n", __func__);
+		return 0;
+	}
+
+	return snprintf(buf, PAGE_SIZE, "%x\n", socinfo_get_serial_number());
+}
+#endif
 
 static ssize_t
 socinfo_show_raw_id(struct sys_device *dev,
@@ -491,6 +562,13 @@ static struct sysdev_attribute socinfo_v1_files[] = {
 	_SYSDEV_ATTR(id, 0444, socinfo_show_id, NULL),
 	_SYSDEV_ATTR(version, 0444, socinfo_show_version, NULL),
 	_SYSDEV_ATTR(build_id, 0444, socinfo_show_build_id, NULL),
+/* LGE_CHANGE
+ * implement the userspace interface for reading soc serial number
+ * 2012-01-10 jaeseong.gim@lge.com
+ */
+#ifdef CONFIG_ARCH_MSM8960
+	_SYSDEV_ATTR(serial_number, 0444, socinfo_show_serial_number, NULL),
+#endif
 };
 
 static struct sysdev_attribute socinfo_v2_files[] = {
@@ -603,6 +681,11 @@ void *setup_dummy_socinfo(void)
 	if (machine_is_msm8960_rumi3() || machine_is_msm8960_sim() ||
 	    machine_is_msm8960_cdp())
 		dummy_socinfo.id = 87;
+#if defined (CONFIG_MACH_LGE)
+	else if (machine_is_msm8960_d1l() || machine_is_msm8960_l_dcm() ||
+		 machine_is_msm8960_d1l_kr() || machine_is_msm8960_lx())
+		dummy_socinfo.id = 87;
+#endif
 	else if (machine_is_apq8064_rumi3() || machine_is_apq8064_sim())
 		dummy_socinfo.id = 109;
 	else if (machine_is_msm9615_mtp() || machine_is_msm9615_cdp())
@@ -713,6 +796,13 @@ int __init socinfo_init(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_MACH_LGE
+uint32_t get_raw_revision(void)
+{
+	return socinfo->v2.raw_version;
+}
+#endif
 
 const int get_core_count(void)
 {

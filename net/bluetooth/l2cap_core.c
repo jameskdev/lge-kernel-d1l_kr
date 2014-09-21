@@ -89,7 +89,13 @@ static int l2cap_answer_move_poll(struct sock *sk);
 static int l2cap_create_cfm(struct hci_chan *chan, u8 status);
 static int l2cap_deaggregate(struct hci_chan *chan, struct l2cap_pinfo *pi);
 static void l2cap_chan_ready(struct sock *sk);
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static void l2cap_conn_del(struct hci_conn *hcon, int err, u8 is_process);
+    /* QCT Original
+static void l2cap_conn_del(struct hci_conn *hcon, int err);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 static u16 l2cap_get_smallest_flushto(struct l2cap_chan_list *l);
 static void l2cap_set_acl_flushto(struct hci_conn *hcon, u16 flush_to);
 
@@ -569,6 +575,10 @@ void l2cap_chan_del(struct sock *sk, int err)
 			ampcon->l2cap_data = NULL;
 		else
 			l2cap_deaggregate(ampchan, l2cap_pi(sk));
+    /* QCT original
+			l2cap_deaggregate(l2cap_pi(sk)->ampchan, l2cap_pi(sk));
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1043
 	}
 
 	sk->sk_state = BT_CLOSED;
@@ -931,6 +941,7 @@ static void l2cap_conn_start(struct l2cap_conn *conn)
 /* Find socket with fixed cid with given source and destination bdaddrs.
  * Direction of the req/rsp must match.
  */
+// *s QCT_BT_COMMON_PATCH_SBA1042
 struct sock *l2cap_find_sock_by_fixed_cid_and_dir(__le16 cid, bdaddr_t *src,
 						bdaddr_t *dst, int incoming)
 {
@@ -964,6 +975,34 @@ struct sock *l2cap_find_sock_by_fixed_cid_and_dir(__le16 cid, bdaddr_t *src,
 
 	return node ? sk : sk1;
 }
+	/* QCT Original
+static struct sock *l2cap_get_sock_by_fixed_scid(int state,
+				__le16 cid, bdaddr_t *src, bdaddr_t *dst)
+{
+	struct sock *sk = NULL, *sk1 = NULL;
+	struct hlist_node *node;
+
+	read_lock(&l2cap_sk_list.lock);
+
+	sk_for_each(sk, node, &l2cap_sk_list.head) {
+		if (state && sk->sk_state != state)
+			continue;
+
+		if (l2cap_pi(sk)->scid == cid && !bacmp(&bt_sk(sk)->dst, dst)) {
+			if (!bacmp(&bt_sk(sk)->src, src))
+				break;
+
+			if (!bacmp(&bt_sk(sk)->src, BDADDR_ANY))
+				sk1 = sk;
+		}
+	}
+
+	read_unlock(&l2cap_sk_list.lock);
+
+	return node ? sk : sk1;
+}
+	*/
+// *e QCT_BT_COMMON_PATCH_SBA1042
 
 /* Find socket with cid and source bdaddr.
  * Returns closest match, locked.
@@ -1027,11 +1066,19 @@ static void l2cap_le_conn_ready(struct l2cap_conn *conn)
 	l2cap_sock_init(sk, parent);
 	bacpy(&bt_sk(sk)->src, conn->src);
 	bacpy(&bt_sk(sk)->dst, conn->dst);
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	l2cap_pi(sk)->incoming = 1;
+// +e QCT_BT_COMMON_PATCH_SBA1042
 
 	bt_accept_enqueue(parent, sk);
 
 	__l2cap_chan_add(conn, sk);
+
+// -s QCT_BT_COMMON_PATCH_SBA1042
+/*
+	l2cap_sock_set_timer(sk, sk->sk_sndtimeo);
+*/
+// -e QCT_BT_COMMON_PATCH_SBA1042
 
 	sk->sk_state = BT_CONNECTED;
 	parent->sk_data_ready(parent, 0);
@@ -1086,8 +1133,10 @@ static void l2cap_conn_ready(struct l2cap_conn *conn)
 
 	read_unlock(&l->lock);
 
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	if (conn->hcon->out && conn->hcon->type == LE_LINK)
 		l2cap_le_conn_ready(conn);
+// +e QCT_BT_COMMON_PATCH_SBA1042
 }
 
 /* Notify sockets that we cannot guaranty reliability anymore */
@@ -1159,7 +1208,13 @@ static struct l2cap_conn *l2cap_conn_add(struct hci_conn *hcon, u8 status)
 	return conn;
 }
 
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static void l2cap_conn_del(struct hci_conn *hcon, int err, u8 is_process)
+    /* QCT Original
+static void l2cap_conn_del(struct hci_conn *hcon, int err)
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 {
 	struct l2cap_conn *conn = hcon->l2cap_data;
 	struct sock *sk;
@@ -1180,14 +1235,18 @@ static void l2cap_conn_del(struct hci_conn *hcon, int err, u8 is_process)
 		BT_DBG("ampcon %p", l2cap_pi(sk)->ampcon);
 		if ((conn->hcon == hcon) || (l2cap_pi(sk)->ampcon == hcon)) {
 			next = l2cap_pi(sk)->next_c;
+// +s QCT_BT_COMMON_PATCH_SBA1044
 			if (is_process)
 				lock_sock(sk);
 			else
+// +e QCT_BT_COMMON_PATCH_SBA1044
 				bh_lock_sock(sk);
 			l2cap_chan_del(sk, err);
+// +s QCT_BT_COMMON_PATCH_SBA1044
 			if (is_process)
 				release_sock(sk);
 			else
+// +e QCT_BT_COMMON_PATCH_SBA1044
 				bh_unlock_sock(sk);
 			l2cap_sock_kill(sk);
 			sk = next;
@@ -3048,8 +3107,13 @@ void l2cap_ertm_recv_done(struct sock *sk)
 {
 	lock_sock(sk);
 
+// *s QCT_BT_COMMON_PATCH_SBA1043
 	if (l2cap_pi(sk)->mode != L2CAP_MODE_ERTM ||
 			sk->sk_state != BT_CONNECTED) {
+    /* QCT original
+	if (l2cap_pi(sk)->mode != L2CAP_MODE_ERTM) {
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1043
 		release_sock(sk);
 		return;
 	}
@@ -7231,6 +7295,7 @@ done:
 	return 0;
 }
 
+// *s QCT_BT_COMMON_PATCH_SBA1042
 static inline int l2cap_att_channel(struct l2cap_conn *conn, __le16 cid,
 							struct sk_buff *skb)
 {
@@ -7262,6 +7327,7 @@ static inline int l2cap_att_channel(struct l2cap_conn *conn, __le16 cid,
 	if (l2cap_pi(sk)->imtu < skb->len)
 		goto drop;
 
+// +s QCT_BT_COMMON_PATCH_CS6
 	if (skb->data[0] == L2CAP_ATT_MTU_REQ) {
 		skb_rsp = bt_skb_alloc(sizeof(mtu_rsp) + L2CAP_HDR_SIZE,
 								GFP_ATOMIC);
@@ -7277,6 +7343,7 @@ static inline int l2cap_att_channel(struct l2cap_conn *conn, __le16 cid,
 
 		goto free_skb;
 	}
+// +e QCT_BT_COMMON_PATCH_CS6
 
 	if (!sock_queue_rcv_skb(sk, skb))
 		goto done;
@@ -7308,6 +7375,80 @@ done:
 		bh_unlock_sock(sk);
 	return 0;
 }
+	/* QCT Original
+static inline int l2cap_att_channel(struct l2cap_conn *conn, __le16 cid, struct sk_buff *skb)
+{
+	struct sock *sk;
+	struct sk_buff *skb_rsp;
+	struct l2cap_hdr *lh;
+// +s QCT_BT_COMMON_PATCH_CS6
+	u8 mtu_rsp[] = {L2CAP_ATT_MTU_RSP, 23, 0};
+// +e QCT_BT_COMMON_PATCH_CS6
+	u8 err_rsp[] = {L2CAP_ATT_ERROR, 0x00, 0x00, 0x00,
+						L2CAP_ATT_NOT_SUPPORTED};
+
+	sk = l2cap_get_sock_by_fixed_scid(0, cid, conn->src, conn->dst);
+	if (!sk)
+		goto drop;
+
+	bh_lock_sock(sk);
+
+	BT_DBG("sk %p, len %d", sk, skb->len);
+
+	if (sk->sk_state != BT_BOUND && sk->sk_state != BT_CONNECTED)
+		goto drop;
+
+	if (l2cap_pi(sk)->imtu < skb->len)
+		goto drop;
+
+// +s QCT_BT_COMMON_PATCH_CS6
+	if (skb->data[0] == L2CAP_ATT_MTU_REQ) {
+		skb_rsp = bt_skb_alloc(sizeof(mtu_rsp) + L2CAP_HDR_SIZE,
+								GFP_ATOMIC);
+		if (!skb_rsp)
+			goto drop;
+
+		lh = (struct l2cap_hdr *) skb_put(skb_rsp, L2CAP_HDR_SIZE);
+		lh->len = cpu_to_le16(sizeof(mtu_rsp));
+		lh->cid = cpu_to_le16(L2CAP_CID_LE_DATA);
+		memcpy(skb_put(skb_rsp, sizeof(mtu_rsp)), mtu_rsp,
+							sizeof(mtu_rsp));
+		hci_send_acl(conn->hcon, NULL, skb_rsp, 0);
+
+		goto free_skb;
+	}
+// +e QCT_BT_COMMON_PATCH_CS6
+
+	if (!sock_queue_rcv_skb(sk, skb))
+		goto done;
+
+drop:
+	if (skb->data[0] & L2CAP_ATT_RESPONSE_BIT &&
+			skb->data[0] != L2CAP_ATT_INDICATE)
+		goto free_skb;
+
+
+	skb_rsp = bt_skb_alloc(sizeof(err_rsp) + L2CAP_HDR_SIZE, GFP_ATOMIC);
+	if (!skb_rsp)
+		goto free_skb;
+
+	lh = (struct l2cap_hdr *) skb_put(skb_rsp, L2CAP_HDR_SIZE);
+	lh->len = cpu_to_le16(sizeof(err_rsp));
+	lh->cid = cpu_to_le16(L2CAP_CID_LE_DATA);
+	err_rsp[1] = skb->data[0];
+	memcpy(skb_put(skb_rsp, sizeof(err_rsp)), err_rsp, sizeof(err_rsp));
+	hci_send_acl(conn->hcon, NULL, skb_rsp, 0);
+
+free_skb:
+	kfree_skb(skb);
+
+done:
+	if (sk)
+		bh_unlock_sock(sk);
+	return 0;
+}
+	*/
+// *e QCT_BT_COMMON_PATCH_SBA1042
 
 static void l2cap_recv_frame(struct l2cap_conn *conn, struct sk_buff *skb)
 {
@@ -7345,7 +7486,13 @@ static void l2cap_recv_frame(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	case L2CAP_CID_SMP:
 		if (smp_sig_channel(conn, skb))
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 			l2cap_conn_del(conn->hcon, EACCES, 0);
+    /* QCT Original
+			l2cap_conn_del(conn->hcon, EACCES);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 		break;
 
 	default:
@@ -7420,7 +7567,13 @@ static int l2cap_connect_cfm(struct hci_conn *hcon, u8 status)
 		if (conn)
 			l2cap_conn_ready(conn);
 	} else
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 		l2cap_conn_del(hcon, bt_err(status), 0);
+    /* QCT Original
+		l2cap_conn_del(hcon, bt_err(status));
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 
 	return 0;
 }
@@ -7437,14 +7590,26 @@ static int l2cap_disconn_ind(struct hci_conn *hcon)
 	return conn->disc_reason;
 }
 
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 static int l2cap_disconn_cfm(struct hci_conn *hcon, u8 reason, u8 is_process)
+    /* QCT Original
+static int l2cap_disconn_cfm(struct hci_conn *hcon, u8 reason)
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 {
 	BT_DBG("hcon %p reason %d", hcon, reason);
 
 	if (!(hcon->type == ACL_LINK || hcon->type == LE_LINK))
 		return -EINVAL;
 
+
+// *s QCT_BT_COMMON_PATCH_SBA1044
 	l2cap_conn_del(hcon, bt_err(reason), is_process);
+    /* QCT Original
+	l2cap_conn_del(hcon, bt_err(reason));
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 
 	return 0;
 }
@@ -7471,7 +7636,9 @@ static int l2cap_security_cfm(struct hci_conn *hcon, u8 status, u8 encrypt)
 	struct l2cap_chan_list *l;
 	struct l2cap_conn *conn = hcon->l2cap_data;
 	struct sock *sk;
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	int smp = 0;
+// +e QCT_BT_COMMON_PATCH_SBA1042
 
 	if (!conn)
 		return 0;
@@ -7488,12 +7655,23 @@ static int l2cap_security_cfm(struct hci_conn *hcon, u8 status, u8 encrypt)
 		BT_DBG("sk->scid %d", l2cap_pi(sk)->scid);
 
 		if (l2cap_pi(sk)->scid == L2CAP_CID_LE_DATA) {
+// *s QCT_BT_COMMON_PATCH_SBA1042
 			if (!status && encrypt) {
 				l2cap_pi(sk)->sec_level = hcon->sec_level;
 				l2cap_chan_ready(sk);
 			}
 
 			smp = 1;
+	/* QCT Original
+			if (!status && encrypt)
+				l2cap_pi(sk)->sec_level = hcon->sec_level;
+
+			del_timer(&hcon->smp_timer);
+			l2cap_chan_ready(sk);
+			smp_link_encrypt_cmplt(conn, status, encrypt);
+	*/
+// *e QCT_BT_COMMON_PATCH_SBA1042
+
 			bh_unlock_sock(sk);
 			continue;
 		}
@@ -7557,10 +7735,12 @@ static int l2cap_security_cfm(struct hci_conn *hcon, u8 status, u8 encrypt)
 
 	read_unlock(&l->lock);
 
+// +s QCT_BT_COMMON_PATCH_SBA1042
 	if (smp) {
 		del_timer(&hcon->smp_timer);
 		smp_link_encrypt_cmplt(conn, status, encrypt);
 	}
+// +e QCT_BT_COMMON_PATCH_SBA1042
 
 	return 0;
 }

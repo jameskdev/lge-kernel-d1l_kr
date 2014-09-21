@@ -747,7 +747,12 @@ static void dbs_refresh_callback(struct work_struct *unused)
 
 	this_dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
 	policy = this_dbs_info->cur_policy;
+
+#if defined(CONFIG_MACH_LGE)
+	if (!policy || policy->cpu < 0 || policy->cpu > 1) {
+#else
 	if (!policy) {
+#endif
 		/* CPU not using ondemand governor */
 		unlock_policy_rwsem_write(cpu);
 		return;

@@ -594,6 +594,39 @@ config PMIC8XXX_VIBRATOR
 	  on the PM8XXX chips. The vibrator is controlled using the
 	  timed output class.
 
+config LGE_PMIC8XXX_VIBRATOR_VOL
+	bool "Control the strength of Qualcomm Vibrator"
+	depends on PMIC8XXX_VIBRATOR
+	default n
+	help
+	  This option enables the control of vibration strength for the vibrator
+	  on the PM8XXX chips. The vibrator volume is controlled using the
+	  timed output class.
+
+config ANDROID_VIBRATOR
+    bool "Android vibrator support"
+        depends on ANDROID_TIMED_OUTPUT
+        default n
+        help
+          This option enalbes device driver support for Android Vibrator driver.
+          Some functions should be given by platform data for enable PWM, Motor IC, etc.
+
+config LGE_ISA1200
+    bool "ISA1200 vibrator support"
+        depends on ANDROID_TIMED_OUTPUT
+        default n
+        help
+          This option enalbes device driver support for Android Vibrator driver.
+          Some functions should be given by platform data for enable PWM, Motor IC, etc.
+
+config LGE_DIRECT_QCOIN_VIBRATOR
+    bool "PM8XXX Direct Q-coin vibrator support"
+        depends on ANDROID_TIMED_OUTPUT
+        default n
+        help
+          This option enalbes device driver support for Android Vibrator driver.
+          Some functions should be given by platform data for Motor IC, etc.
+
 config PMIC8XXX_NFC
 	tristate "Qualcomm PM8XXX support for Near Field Communication"
 	depends on MFD_PM8XXX
@@ -641,6 +674,20 @@ config QFP_FUSE
 	  fuses. The ioctls provides the necessary interface
 	  to the fuse block. Currently this is supported only
 	  on FSM targets.
+
+config BU52031NVX
+	tristate "Cradle BU52031NVX support"
+	depends on MFD_PM8XXX
+	help
+	  This option enables device driver support for the cradle
+	  on the PM8XXX chips. The cradle is controlled using the
+	  PM8XXX gpio.
+
+config BU52031NVX_POUCHDETECT
+	tristate "Cradle BU52031NVX_POUCHDETECT support"
+	depends on BU52031NVX
+	help
+	  This option enables pouch.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

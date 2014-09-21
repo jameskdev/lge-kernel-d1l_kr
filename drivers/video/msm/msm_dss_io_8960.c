@@ -483,7 +483,15 @@ void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info,
 	int i, off;
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0x128, 0x0001);/* start phy sw reset */
+	/* LGE_CHANGE
+	 * Reduce delay time only for D1LV
+	 * 2012-04-06, baryun.hwang@lge.com
+	 */
+#ifdef CONFIG_MACH_MSM8960_D1LV
+	msleep(10);
+#else
 	msleep(100);
+#endif
 	MIPI_OUTP(MIPI_DSI_BASE + 0x128, 0x0000);/* end phy w reset */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x500, 0x0003);/* regulator_ctrl_0 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x504, 0x0001);/* regulator_ctrl_1 */

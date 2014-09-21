@@ -125,3 +125,11 @@ obj-y				+= ieee802154/
 obj-y				+= clk/
 
 obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/
+#FeliCa
+obj-$(CONFIG_LGE_FELICA) 	+= felica/
+obj-$(CONFIG_LGE_FELICA) 	+= mosquitod/
+obj-$(CONFIG_LGE_FELICA) 	+= mosquitou/
+#1Seg
+obj-$(CONFIG_LGE_BROADCAST_1SEG) += broadcast/
+#TDMB
+obj-$(CONFIG_LGE_BROADCAST_TDMB) += broadcast/

@@ -95,6 +95,10 @@ static void init_watchdog_work(struct work_struct *work);
 static DECLARE_DELAYED_WORK(dogwork_struct, pet_watchdog_work);
 static DECLARE_WORK(init_dogwork_struct, init_watchdog_work);
 
+#ifdef CONFIG_MACH_LGE
+extern uint32_t get_raw_revision(void);
+#endif
+
 static int msm_watchdog_suspend(struct device *dev)
 {
 	if (!enable)
@@ -211,7 +215,12 @@ void pet_watchdog(void)
 static void pet_watchdog_work(struct work_struct *work)
 {
 	pet_watchdog();
-
+#ifdef CONFIG_MACH_LGE
+	printk(">>>%s [system rev: %d][raw ver: %d]\n",
+		__FUNCTION__, system_rev, get_raw_revision());
+#else	/* origin */
+	printk(">>>%s\n",__FUNCTION__);
+#endif
 	if (enable)
 		schedule_delayed_work_on(0, &dogwork_struct, delay_time);
 }

@@ -31,6 +31,7 @@ struct pm8xxx_vib_config {
 struct pm8xxx_vibrator_platform_data {
 	int initial_vibrate_ms;
 	int max_timeout_ms;
+	int min_timeout_ms;
 	int level_mV;
 };
 

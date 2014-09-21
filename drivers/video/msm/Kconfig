@@ -15,6 +15,24 @@ config FB_MSM
 
 if FB_MSM
 
+# LGE_CHANGE_S. jihyun.lee@lge.com. 2011.09.22
+menu "LGE Display Features"
+
+config LGE_DISP_FBREAD
+    bool "Enable msm_fb_read"
+    default y
+	---help---
+      Select this feature if you want to dump framebuffer.
+
+# LGE_CHANGE_S. junki.min@lge.com. 2012.01.09
+config LGE_ESD_CHECK
+	bool "Enable sysfs for ESD check"
+	default n
+# LGE_CHANGE_E.
+
+endmenu
+# LGE_CHANGE_E.
+
 config FB_MSM_BACKLIGHT
 	bool "Support for backlight control"
 	default y
@@ -151,6 +169,29 @@ config FB_MSM_MIPI_DSI_TOSHIBA
 	select FB_MSM_MIPI_DSI
 	default n
 
+# LGE_CHANGE_S. minjong.gong@lge.com. 2011.06.20
+config FB_MSM_MIPI_DSI_LGIT
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_HITACHI
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
+config FB_MSM_MIPI_DSI_LGD
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+# LGE_CHANGE_E
+
+# LGE_CHANGE. hoseok.kim@lge.com. 2011.12.20
+config FB_MSM_MIPI_DSI_R61529
+	bool
+	select FB_MSM_MIPI_DSI
+	default n
+
 config FB_MSM_MIPI_DSI_RENESAS
 	bool
 	select FB_MSM_MIPI_DSI
@@ -245,6 +286,52 @@ config FB_MSM_LCDC_NT35582_WVGA
 config FB_MSM_LCDC_WXGA
 	bool
 	select FB_MSM_LCDC_PANEL
+	default n
+
+# LGE_CHANGE_S. minjong.gong@lge.com. 2011.08.22
+config FB_MSM_MIPI_LGIT_VIDEO_HD_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGIT
+	default n
+config FB_MSM_MIPI_LGIT_CMD_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGIT
+	default n
+config FB_MSM_MIPI_LGIT_VIDEO_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGIT
+	default n
+
+config FB_MSM_MIPI_HITACHI_VIDEO_HD_PT
+	bool
+	select FB_MSM_MIPI_DSI_HITACHI
+	default n
+config FB_MSM_MIPI_HITACHI_VIDEO_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_HITACHI
+	default n
+config FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGIT
+	default n
+config FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGIT
+config FB_MSM_MIPI_LGD_VIDEO_QHD_PT
+	bool
+	select FB_MSM_MIPI_DSI_LGD
+	default n
+# LGE_CHANGE_E
+
+# LGE_CHANGE. hoseok.kim@lge.com. 2011.12.20
+config FB_MSM_MIPI_R61529_VIDEO_HVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_R61529
+	default n
+
+config FB_MSM_MIPI_R61529_CMD_HVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_R61529
 	default n
 
 config FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT
@@ -488,6 +575,64 @@ config FB_MSM_MDDI_SHARP_QVGA_128x128
 	---help---
 	  Support for MDDI Sharp QVGA (240x320) and 128x128 dual panel
 
+# LGE_CHANGE_S. minjong.gong@lge.com. 2011.06.20
+config FB_MSM_MIPI_LGIT_VIDEO_HD_PT_PANEL
+	bool "MIPI LG Display HD PT Panel"
+	select FB_MSM_MIPI_LGIT_VIDEO_HD_PT
+
+config FB_MSM_MIPI_LGIT_CMD_WVGA_PT_PANEL
+	bool "MIPI LG Display WVGA PT Panel(Command mode)"
+	select FB_MSM_MIPI_LGIT_CMD_WVGA_PT
+
+config FB_MSM_MIPI_LGIT_VIDEO_WVGA_PT_PANEL
+	bool "MIPI LG Display WVGA PT Panel(Video mode)"
+	select FB_MSM_MIPI_LGIT_VIDEO_WVGA_PT
+
+config FB_MSM_MIPI_HITACHI_VIDEO_HD_PT_PANEL
+	bool "MIPI Hitachi HD PT Panel"
+	select FB_MSM_MIPI_HITACHI_VIDEO_HD_PT
+
+config FB_MSM_MIPI_HITACHI_VIDEO_WVGA_PT_PANEL
+	bool "MIPI Hitachi WVGA PT Panel(Video mode)"
+	select FB_MSM_MIPI_HITACHI_VIDEO_WVGA_PT
+
+config FB_MSM_MIPI_HITACHI_DX11D_VIDEO_HD_PT_PANEL
+	bool "MIPI Hitachi DX11D HD PT Panel"
+	select FB_MSM_MIPI_HITACHI_VIDEO_HD_PT
+
+config FB_MSM_MIPI_HITACHI_DX12D_VIDEO_HD_PT_PANEL
+	bool "MIPI Hitachi DX12D HD PT Panel"
+	select FB_MSM_MIPI_HITACHI_VIDEO_HD_PT
+
+config FB_MSM_MIPI_LGD_VIDEO_QHD_PT_PANEL
+	bool "MIPI LGD qHD PT Panel"
+	select FB_MSM_MIPI_LGD_VIDEO_QHD_PT
+# LGE_CHANGE_E
+
+# LGE_CHANGE_S. kyunghoo.ryu@lge.com . 2011.11.24
+config FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL
+	bool "MIPI LGIT WVGA Command mode PT Panel (Inversed)"
+	select FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT
+	---help---
+	  Support for rotate display output for l-dcm
+	  
+config FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL
+	bool "MIPI LGIT WVGA Video mode PT Panel (Inversed)"
+	select FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT
+	---help---
+	  Support for rotate display output for l-dcm
+# LGE_CHANGE_E
+
+# LGE_CHANGE_S. hoseok.kim@lge.com. 2011.12.19
+config FB_MSM_MIPI_R61529_VIDEO_HVGA_PT_PANEL
+	bool "MIPI R61529 Video HVGA PT Panel"
+	select FB_MSM_MIPI_R61529_VIDEO_HVGA_PT
+
+config FB_MSM_MIPI_R61529_CMD_HVGA_PT_PANEL
+	bool "MIPI R61529 Video CMD PT Panel"
+	select FB_MSM_MIPI_R61529_CMD_HVGA_PT
+# LGE_CHANGE_E
+
 config FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT_PANEL
 	bool "MIPI Toshiba WVGA PT Panel"
 	select FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT
@@ -655,6 +800,14 @@ config FB_MSM_HDMI_MHL
 	  MHL (Mobile High-Definition Link) technology
 	  uses USB connector to output HDMI content
 
+# LGE_CHANGE_E seongyun.jeong@lge.com 20111228
+config FB_MSM_HDMI_MSM_LG_MHL_CERTIFICATION
+	bool "MHL Certification"
+	depends on FB_MSM_HDMI_MSM_PANEL
+	default n
+	---help---
+	 Support for MHL Certification
+	  
 choice
 	depends on  (FB_MSM_MDP22 || FB_MSM_MDP31 || FB_MSM_MDP40)
 	prompt "TVOut Region"

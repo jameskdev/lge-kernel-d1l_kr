@@ -3659,6 +3659,9 @@ static int __init binder_init(void)
 				    &binder_transaction_log_failed,
 				    &binder_transaction_log_fops);
 	}
+#ifdef CONFIG_MACH_LGE
+	binder_debug_mask = BINDER_DEBUG_TOP_ERRORS;
+#endif
 	return ret;
 }
 

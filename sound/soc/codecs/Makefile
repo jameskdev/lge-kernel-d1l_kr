@@ -39,6 +39,7 @@ snd-soc-twl6040-objs := twl6040.o
 snd-soc-uda134x-objs := uda134x.o
 snd-soc-uda1380-objs := uda1380.o
 snd-soc-wcd9310-objs := wcd9310.o wcd9310-tables.o
+CFLAGS_wcd9310.o := -Wno-unused
 snd-soc-wl1273-objs := wl1273.o
 snd-soc-wm1250-ev1-objs := wm1250-ev1.o
 snd-soc-wm8350-objs := wm8350.o
@@ -183,3 +184,8 @@ obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 obj-$(CONFIG_SND_SOC_WM2000)	+= snd-soc-wm2000.o
 obj-$(CONFIG_SND_SOC_WM9090)	+= snd-soc-wm9090.o
+
+# CONFIG_LGE_AUDIO
+# tarzan.park@lge.com
+obj-$(CONFIG_LGE_AUDIO_TPA2028D) += tpa2028d.o
+obj-$(CONFIG_LGE_AUDIO) += fsa8008.o

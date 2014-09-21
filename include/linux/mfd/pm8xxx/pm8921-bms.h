@@ -114,6 +114,15 @@ struct pm8921_bms_platform_data {
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)
 extern struct pm8921_bms_battery_data  palladium_1500_data;
+
+/* L0, Change Battery Profile
+*  Battery is changed from 4.20V to 4.35V after Rev.C
+*  2012-03-19, junsin.park@lge.com
+*/
+#if defined(CONFIG_LGE_PM) && defined(CONFIG_MACH_MSM8960_L0)
+extern struct pm8921_bms_battery_data  palladium_1500_data_2;
+#endif
+
 /**
  * pm8921_bms_get_vsense_avg - return the voltage across the sense
  *				resitor in microvolts

@@ -35,6 +35,10 @@
 #include "msm_watchdog.h"
 #include "timer.h"
 
+#ifdef CONFIG_LGE_HIDDEN_RESET
+#include <mach/board_lge.h>
+#endif
+
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -46,6 +50,18 @@
 #define DLOAD_MODE_ADDR     0x0
 
 #define SCM_IO_DISABLE_PMIC_ARBITER	1
+
+#ifdef CONFIG_LGE_HANDLE_PANIC
+/* 
+ * Magic number for LGE Error handler
+ */
+#define LGE_ERROR_HANDLE_MAGIC_NUM        0xA97F2C46
+/*
+ * Need to check offset address in SBL3 (struct boot_shared_imem_cookie_type)
+ */
+#define LGE_ERROR_HANDLE_MAGIC_ADDR     0x14
+void *lge_error_handle_cookie_addr;
+#endif
 
 static int restart_mode;
 void *restart_reason;
@@ -77,9 +93,22 @@ static struct notifier_block panic_blk = {
 static void set_dload_mode(int on)
 {
 	if (dload_mode_addr) {
+#ifdef CONFIG_LGE_HIDDEN_RESET
+		/* If dload magic is set, rpm booting is skipped by bootloader
+		 * Thus, skip dload magic during hreset_enable
+		 */
+		if (on && hreset_enable && restart_mode != RESTART_DLOAD)
+			goto skip_dload_magic;
+#endif
 		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
 		__raw_writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
+#ifdef CONFIG_LGE_HIDDEN_RESET
+skip_dload_magic:
+#endif
+#ifdef CONFIG_LGE_HANDLE_PANIC
+		__raw_writel(on ? LGE_ERROR_HANDLE_MAGIC_NUM : 0,  lge_error_handle_cookie_addr);
+#endif
 		mb();
 	}
 }
@@ -176,6 +205,40 @@ static irqreturn_t resout_irq_handler(int irq, void *dev_id)
 		;
 	return IRQ_HANDLED;
 }
+#ifdef CONFIG_LGE_HANDLE_PANIC
+static int subsys_crash_magic=0;
+#define SUBSYS_NAME_MAX_LENGTH 40
+
+int lge_get_magic_for_subsystem(void)
+{
+	return subsys_crash_magic;
+}
+
+void lge_set_magic_for_subsystem(const char* subsys_name)
+{
+        const char *crash_subsys[] = {"modem","riva","dsps","lpass",};
+	int i;
+
+	for(i=0;i<ARRAY_SIZE(crash_subsys);i++){
+		if(!strncmp(crash_subsys[i],subsys_name,SUBSYS_NAME_MAX_LENGTH)){
+			subsys_crash_magic = (0x6d630000 |((i+1)<<12));
+			break;
+		}
+	}
+}
+
+void lge_set_kernel_crash_magic(void)
+{
+	if(subsys_crash_magic==0)
+		__raw_writel(0x6d630100, restart_reason);
+	else
+		__raw_writel(restart_mode, restart_reason);
+}
+#endif
+
+#ifdef CONFIG_MACH_LGE
+extern resource_size_t lge_add_info;
+#endif
 
 void arch_reset(char mode, const char *cmd)
 {
@@ -189,8 +252,14 @@ void arch_reset(char mode, const char *cmd)
 	set_dload_mode(in_panic);
 
 	/* Write download mode flags if restart_mode says so */
-	if (restart_mode == RESTART_DLOAD)
+	if (restart_mode == RESTART_DLOAD) {
 		set_dload_mode(1);
+#ifdef CONFIG_LGE_HANDLE_PANIC
+// replace to lge_set_kernel_crash_magic()
+        writel(0x6d63c421, restart_reason);
+        goto reset;
+#endif
+    }
 
 	/* Kill download mode if master-kill switch is set */
 	if (!download_mode)
@@ -201,19 +270,66 @@ void arch_reset(char mode, const char *cmd)
 
 	pm8xxx_reset_pwr_off(1);
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	if(in_panic==1) {
+		lge_set_kernel_crash_magic();
+	} else {
+		if (cmd != NULL) {
+			if (!strncmp(cmd, "bootloader", 10)) {
+				__raw_writel(0x77665500, restart_reason);
+			} else if (!strncmp(cmd, "recovery", 8)) {
+				__raw_writel(0x77665502, restart_reason);
+			/* PC Sync B&R : Add restart reason */
+			} else if (!strncmp(cmd, "--bnr_recovery", 14)) {
+                                __raw_writel(0x77665555, restart_reason);
+			} else if (!strncmp(cmd, "oem-", 4)) {
+				unsigned long code;
+				code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
+				__raw_writel(0x6f656d00 | code, restart_reason);
+#ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
+			/* LGE_CHANGE: For detecting reboot by remove battery
+			 * 2012-01-30, bongkyu.kim@lge.com
+			 */
+			} else if (!strncmp(cmd, "battery", 7)) {
+				__raw_writel(0x77665510, restart_reason);
+#endif
+			} else {
+				__raw_writel(0x77665501, restart_reason);
+			}
+		}
+	}
+
+reset:
+#else
+
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			__raw_writel(0x77665502, restart_reason);
+		/* PC Sync B&R : Add restart reason */
+		} else if (!strncmp(cmd, "--bnr_recovery", 14)) {
+			__raw_writel(0x77665555, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
 			__raw_writel(0x6f656d00 | code, restart_reason);
+#ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
+		/* LGE_CHANGE: For detecting reboot by remove battery
+		 * 2012-01-30, bongkyu.kim@lge.com
+		 */
+		} else if (!strncmp(cmd, "battery", 7)) {
+			__raw_writel(0x77665510, restart_reason);
+#endif
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
+#endif
+
+#ifdef CONFIG_MACH_LGE
+	__raw_writel(__raw_readl(restart_reason), lge_add_info);
+#endif
 
 	__raw_writel(0, msm_tmr0_base + WDT0_EN);
 	if (!(machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())) {
@@ -240,6 +356,10 @@ static int __init msm_restart_init(void)
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	lge_error_handle_cookie_addr = MSM_IMEM_BASE + LGE_ERROR_HANDLE_MAGIC_ADDR;
+#endif
+
 	/* Reset detection is switched on below.*/
 	set_dload_mode(1);
 #endif
@@ -257,6 +377,9 @@ static int __init msm_restart_init(void)
 		pr_warn("no pmic restart interrupt specified\n");
 	}
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	__raw_writel(0x6d63ad00, restart_reason);
+#endif
 	return 0;
 }
 

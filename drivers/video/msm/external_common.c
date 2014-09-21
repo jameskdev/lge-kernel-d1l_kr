@@ -15,7 +15,7 @@
 #include <linux/bitops.h>
 #include <linux/mutex.h>
 
-/* #define DEBUG */
+#define DEBUG
 #define DEV_DBG_PREFIX "EXT_COMMON: "
 
 #include "msm_fb.h"
@@ -1369,6 +1369,11 @@ static boolean check_edid_header(const uint8 *edid_buf)
 		&& (edid_buf[6] == 0xff) && (edid_buf[7] == 0x00);
 }
 
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+/* ++ glen.lee (dongwook.lee@lge.com) start [2011/12/26] */
+extern unsigned char ext_edid[0x80 * 4];
+/* ++ glen.lee (dongwook.lee@lge.com) stop [2011/12/26] */
+#endif
 int hdmi_common_read_edid(void)
 {
 	int status = 0;
@@ -1470,6 +1475,12 @@ int hdmi_common_read_edid(void)
 		 * version number - v1,v2,v3 (v1 is seldom, v2 is obsolete,
 		 * v3 most common) */
 		cea_extension_ver = edid_buf[0x81];
+
+#ifdef CONFIG_LGE_COMPRESSED_PATH
+		/* ++ glen.lee (dongwook.lee@lge.com) start [2011/12/26] */
+		memcpy(&ext_edid, &edid_buf[0x81], 0x80 * 3);
+		/* ++ glen.lee (dongwook.lee@lge.com) stop [2011/12/26] */
+#endif
 	}
 
 	/* EDID_VERSION[0x12] - EDID Version */
@@ -1523,7 +1534,11 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 				: HDMI_VFRMT_1440x576i50_16_9;
 			break;
 		case 1920:
+#ifdef CONFIG_SII8334_MHL_TX
+			format = HDMI_VFRMT_1920x1080p30_16_9;
+#else /*QCT original*/
 			format = HDMI_VFRMT_1920x1080p60_16_9;
+#endif
 			break;
 		}
 	}
@@ -1619,4 +1634,27 @@ void hdmi_common_init_panel_info(struct msm_panel_info *pinfo)
 	pinfo->lcdc.hsync_skew = 0;
 }
 EXPORT_SYMBOL(hdmi_common_init_panel_info);
+
+void hdmi_common_send_uevent(char *buf)
+{
+	char *envp[2];
+	int env_offset = 0;
+
+	envp[env_offset++] = buf;
+	envp[env_offset] = NULL;
+
+	kobject_uevent_env(external_common_state->uevent_kobj, KOBJ_CHANGE, envp);
+}
+EXPORT_SYMBOL(hdmi_common_send_uevent);
+
+/* LGE MHL: Using for MHL Charging When USB or TA cable is connected*/
+#ifdef CONFIG_SII8334_MHL_TX
+int hdmi_common_cable_connected(void) {
+	if(external_common_state == NULL)
+		return 0; //HPD disconnected Status
+	return external_common_state->hpd_state;
+}
+EXPORT_SYMBOL(hdmi_common_cable_connected);
+#endif /* CONFIG_SII8334_MHL_TX */
+
 #endif

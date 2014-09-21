@@ -67,6 +67,11 @@
 
 #include "ci13xxx_udc.h"
 
+#ifdef CONFIG_USB_G_LGE_ANDROID_PFSC
+#include <mach/board_lge.h>
+
+#define PORTSC_PFSC BIT(24)
+#endif
 
 /******************************************************************************
  * DEFINE
@@ -335,6 +340,18 @@ static int hw_device_reset(struct ci13xxx *udc)
 		pr_err("lpm = %i", hw_bank.lpm);
 		return -ENODEV;
 	}
+
+#ifdef CONFIG_USB_G_LGE_ANDROID_PFSC
+	switch(lge_pm_get_cable_type()) {
+		case CABLE_130K:
+			hw_cwrite(CAP_PORTSC, PORTSC_PFSC, PORTSC_PFSC);
+			break;
+		case CABLE_56K:
+		/* fall through */
+		default:
+			break;
+	}
+#endif
 
 	return 0;
 }
@@ -1937,9 +1954,15 @@ __acquires(udc->lock)
 
 	spin_unlock(udc->lock);
 
+#ifdef CONFIG_LGE_PM
+	/*stop charging upon reset */
+	if (udc->transceiver && !udc->vbus_active)
+		otg_set_power(udc->transceiver, 0);
+#else
 	/*stop charging upon reset */
 	if (udc->transceiver)
 		otg_set_power(udc->transceiver, 0);
+#endif
 
 	retval = _gadget_stop_activity(&udc->gadget);
 	if (retval)

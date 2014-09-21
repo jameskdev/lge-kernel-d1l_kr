@@ -388,6 +388,9 @@ static int msm_cache_erp_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+#ifdef CONFIG_MACH_LGE
+if(0) {
+#endif
 	r = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "l2_irq");
 
 	if (!r) {
@@ -403,6 +406,9 @@ static int msm_cache_erp_probe(struct platform_device *pdev)
 		pr_err("Failed to request the L2 cache error interrupt\n");
 		goto fail_l1;
 	}
+#ifdef CONFIG_MACH_LGE
+}
+#endif
 
 	procfs_entry = create_proc_entry("cpu/msm_cache_erp", S_IRUGO, NULL);
 
@@ -422,6 +428,9 @@ static int msm_cache_erp_probe(struct platform_device *pdev)
 	return 0;
 
 fail_l2:
+#ifdef CONFIG_MACH_LGE
+if(0)
+#endif
 	free_irq(l2_erp_irq, NULL);
 fail_l1:
 	free_percpu_irq(l1_erp_irq, NULL);
@@ -444,8 +453,10 @@ static int msm_cache_erp_remove(struct platform_device *pdev)
 
 	free_percpu_irq(l1_erp_irq, NULL);
 
+#ifdef CONFIG_MACH_LGE
 	disable_irq(l2_erp_irq);
 	free_irq(l2_erp_irq, NULL);
+#endif
 	return 0;
 }
 

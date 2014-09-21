@@ -299,9 +299,13 @@ static int msm_spkramp_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
-
+#ifdef CONFIG_SWITCH_FSA8008
+int msm_enable_codec_ext_clk(
+		struct snd_soc_codec *codec, enum tabla_mclk_bg_state enable)
+#else
 int msm_enable_codec_ext_clk(
 		struct snd_soc_codec *codec, int enable)
+#endif
 {
 	pr_debug("%s: enable = %d\n", __func__, enable);
 	if (enable) {

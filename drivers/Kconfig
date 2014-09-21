@@ -130,4 +130,12 @@ source "drivers/hwspinlock/Kconfig"
 
 source "drivers/clocksource/Kconfig"
 
+source "drivers/felica/Kconfig"
+
+source "drivers/mosquitod/Kconfig"
+
+source "drivers/mosquitou/Kconfig"
+
+source "drivers/broadcast/Kconfig"
+
 endmenu

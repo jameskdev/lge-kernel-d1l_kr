@@ -940,6 +940,7 @@ static void hci_cc_user_confirm_neg_reply(struct hci_dev *hdev,
 	hci_dev_unlock(hdev);
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 static void hci_cc_read_rssi(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_conn *conn;
@@ -954,6 +955,7 @@ static void hci_cc_read_rssi(struct hci_dev *hdev, struct sk_buff *skb)
 		mgmt_read_rssi_complete(hdev->id, rp->rssi, &conn->dst,
 			__le16_to_cpu(rp->handle), rp->status);
 }
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 static void hci_cc_read_local_oob_data_reply(struct hci_dev *hdev,
 							struct sk_buff *skb)
@@ -1121,6 +1123,7 @@ static void hci_cs_auth_requested(struct hci_dev *hdev, __u8 status)
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
 	if (conn) {
+// *s QCT_BT_COMMON_PATCH_SBA1043
 		if (status) {
 			mgmt_auth_failed(hdev->id, &conn->dst, status);
 			clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
@@ -1141,6 +1144,13 @@ static void hci_cs_auth_requested(struct hci_dev *hdev, __u8 status)
 				hci_encrypt_cfm(conn, status, 0x00);
 			}
 		}
+    /* QCT original
+		if (status && conn->state == BT_CONFIG) {
+			hci_proto_connect_cfm(conn, status);
+			hci_conn_put(conn);
+		}
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1043
 		conn->auth_initiator = 1;
 	}
 
@@ -1779,7 +1789,12 @@ static inline void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff
 	if (conn->type == LE_LINK)
 		del_timer(&conn->smp_timer);
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 	hci_proto_disconn_cfm(conn, ev->reason, 0);
+    /* QCT Original
+	hci_proto_disconn_cfm(conn, ev->reason);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 	hci_conn_del(conn);
 
 unlock:
@@ -1957,7 +1972,9 @@ static inline void hci_remote_features_evt(struct hci_dev *hdev, struct sk_buff 
 
 	if (!ev->status) {
 		memcpy(conn->features, ev->features, 8);
+// +s QCT_BT_COMMON_PATCH_SBA1043
 		mgmt_remote_features(hdev->id, &conn->dst, ev->features);
+// +e QCT_BT_COMMON_PATCH_SBA1043
 	}
 
 	if (conn->state != BT_CONFIG)
@@ -1970,6 +1987,11 @@ static inline void hci_remote_features_evt(struct hci_dev *hdev, struct sk_buff 
 		hci_send_cmd(hdev, HCI_OP_READ_REMOTE_EXT_FEATURES,
 							sizeof(cp), &cp);
 		goto unlock;
+//+s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
+	} else  if (!(lmp_ssp_capable(conn)) && conn->auth_initiator &&
+		(conn->pending_sec_level == BT_SECURITY_HIGH)) {
+		conn->pending_sec_level = BT_SECURITY_MEDIUM;
+//+e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
 	}
 
 	if (!ev->status) {
@@ -2192,9 +2214,11 @@ static inline void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *sk
 		hci_cc_le_read_buffer_size(hdev, skb);
 		break;
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 	case HCI_OP_READ_RSSI:
 		hci_cc_read_rssi(hdev, skb);
 		break;
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 	case HCI_OP_USER_CONFIRM_REPLY:
 		hci_cc_user_confirm_reply(hdev, skb);
@@ -2767,9 +2791,22 @@ static inline void hci_remote_ext_features_evt(struct hci_dev *hdev, struct sk_b
 		conn->ssp_mode = (ev->features[0] & 0x01);
 		/*In case if remote device ssp supported/2.0 device
 		reduce the security level to MEDIUM if it is HIGH*/
+// *s QCT_BT_COMMON_PATCH_SBA1044
 		if (!conn->ssp_mode && conn->auth_initiator &&
+    /* QCT Original
+		if (!conn->ssp_mode &&
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 			(conn->pending_sec_level == BT_SECURITY_HIGH))
 			conn->pending_sec_level = BT_SECURITY_MEDIUM;
+
+//+s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
+		if (conn->ssp_mode && conn->auth_initiator &&
+			conn->io_capability != 0x03) {
+			conn->pending_sec_level = BT_SECURITY_HIGH;
+			conn->auth_type = HCI_AT_DEDICATED_BONDING_MITM;
+		}
+//+e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
 	}
 
 	if (conn->state != BT_CONFIG)
@@ -3326,7 +3363,12 @@ static inline void hci_disconn_phy_link_complete_evt(struct hci_dev *hdev,
 	if (conn) {
 		conn->state = BT_CLOSED;
 
+// *s QCT_BT_COMMON_PATCH_SBA1044
 		hci_proto_disconn_cfm(conn, ev->reason, 0);
+    /* QCT Original
+		hci_proto_disconn_cfm(conn, ev->reason);
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 		hci_conn_del(conn);
 	}
 

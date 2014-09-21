@@ -319,6 +319,8 @@ enum msm_mdp_hw_revision {
 	MDP_REV_40,
 	MDP_REV_41,
 	MDP_REV_42,
+	MDP_REV_43,
+	MDP_REV_44,
 };
 
 struct msm_panel_common_pdata {
@@ -337,6 +339,29 @@ struct msm_panel_common_pdata {
 	struct msm_bus_scale_pdata *mdp_bus_scale_table;
 #endif
 	int mdp_rev;
+	int (*writeback_offset)(void);
+#if defined(CONFIG_FB_MSM_MIPI_DSI_HITACHI) ||\
+	defined(CONFIG_FB_MSM_MIPI_DSI_LGD) ||\
+	defined(CONFIG_FB_MSM_MIPI_LGIT_VIDEO_WVGA_INVERSE_PT_PANEL) ||\
+	defined(CONFIG_FB_MSM_MIPI_LGIT_CMD_WVGA_INVERSE_PT_PANEL) ||\
+	defined(CONFIG_FB_MSM_MIPI_R61529_VIDEO_HVGA_PT_PANEL) ||\
+	defined(CONFIG_FB_MSM_MIPI_R61529_CMD_HVGA_PT_PANEL)
+#ifdef CONFIG_LGE_LCD_TUNING
+	/* LGE_CHANGE
+	 * To get init code used for LCD driver
+	 * 2011-11-09, baryun.hwang@lge.com
+	 */
+	int (*read_regset)(unsigned long);
+	int (*write_regset)(unsigned long);
+#endif
+	void *power_on_set;
+	void *power_off_set;
+	ssize_t power_on_set_size;
+	ssize_t power_off_set_size;
+	int max_backlight_level;
+#endif
+	int mdp_writeback_memtype;
+	void *mdp_writeback_phys;    /* writeback physical addr */
 	u32 ov0_wb_size;  /* overlay0 writeback size */
 	u32 ov1_wb_size;  /* overlay1 writeback size */
 	u32 mem_hid;

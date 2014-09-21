@@ -186,7 +186,11 @@ struct dsi_clk_desc {
 #define DSI_BUF_SIZE	1024
 #define MIPI_DSI_MRPS	0x04  /* Maximum Return Packet Size */
 
+#ifdef CONFIG_LGE_ESD_CHECK
+#define MIPI_DSI_LEN 32 /* read up to 28 paramters temporary */
+#else
 #define MIPI_DSI_LEN 8 /* 4 x 4 - 6 - 2, bytes dcs header+crc-align  */
+#endif /* CONFIG_LGE_ESD_CHECK */
 
 struct dsi_buf {
 	uint32 *hdr;	/* dsi host header */

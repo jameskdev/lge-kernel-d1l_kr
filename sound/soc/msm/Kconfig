@@ -127,7 +127,9 @@ config SND_SOC_MSM8960
 	select SND_SOC_MSM_STUB
 	select SND_SOC_WCD9310
 	select SND_SOC_MSM_HOSTLESS_PCM
-	select SND_SOC_MSM_QDSP6_HDMI_AUDIO
+# LGE_UPDATE 20120219 remove SND_SOC_MSM_QDSP6_HDMI_AUDIO for non-hdmi device
+#   hdmi device must select SND_SOC_MSM_QDSP6_HDMI_AUDIO in def_config file
+#	select SND_SOC_MSM_QDSP6_HDMI_AUDIO
 	default n
 	help
 	 To add support for SoC audio on MSM8960 and APQ8064 boards
@@ -141,4 +143,9 @@ config SND_SOC_MSM8660_APQ
         default n
         help
          To add support for SoC audio on APQ8060 board
+	 
+config LGE_COMPRESSED_PATH
+        bool "Compressed multichannel output for QDSP6"
+        default n
+
 endmenu

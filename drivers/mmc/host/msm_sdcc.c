@@ -55,6 +55,17 @@
 #include <mach/dma.h>
 #include <mach/sdio_al.h>
 
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Exception handling : for DCM Board(for crappy Hynix eMMC).
+	* Do not refer below code.
+	* 2012-04-10, G1-FS@lge.com
+	*/
+	#if defined(CONFIG_MACH_MSM8960_L_DCM)
+	#include <mach/board_lge.h>
+	#endif
+#endif
+
 #include "msm_sdcc.h"
 #include "msm_sdcc_dml.h"
 
@@ -1432,6 +1443,19 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 
 		if (!msmsdcc_sg_next(host, &buffer, &remain))
 			break;
+
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE
+		* Exception handling : Kernel Panic issue by Null Pointer
+		* 2011-11-10, warkap.seo@lge.com
+		*/
+		if(!host->curr.data)
+		{
+			writel(0, base + MMCIMASK1);
+			spin_unlock(&host->lock);
+			return IRQ_HANDLED;
+		}
+#endif
 
 		len = 0;
 		if (status & MCI_RXACTIVE)
@@ -3383,6 +3407,14 @@ msmsdcc_check_status(unsigned long data)
 		else
 			status = msmsdcc_slot_status(host);
 
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE
+		* Adding Print
+		* 2011-11-10, warkap.seo@lge.com
+		*/
+		printk(KERN_INFO "[LGE][MMC][%-18s( )] slot_status:%d, host->oldstat:%d, host->eject:%d\n", __func__, status, host->oldstat, host->eject);
+#endif 
+		
 		host->eject = !status;
 
 		if (status ^ host->oldstat) {
@@ -3415,6 +3447,14 @@ static irqreturn_t
 msmsdcc_platform_status_irq(int irq, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
+
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Exception handling : Kernel Panic issue by Null Pointer
+	* 2011-11-10, warkap.seo@lge.com
+	*/
+	printk(KERN_INFO "[LGE][MMC][%-18s( )] irq:%d\n", __func__, irq);
+#endif
 
 	pr_debug("%s: %d\n", __func__, irq);
 	msmsdcc_check_status((unsigned long) host);
@@ -4440,7 +4480,24 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->caps |= plat->mmc_bus_width;
 
 	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED;
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE
+	* Exception handling : for DCM Board(for crappy Hynix eMMC).
+	* Do not refer below code.
+	* 2012-04-10, G1-FS@lge.com
+	*/
+	#if defined(CONFIG_MACH_MSM8960_L_DCM)
+		if (lge_get_board_revno() >= HW_REV_D) {
+			mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_ERASE;
+		} else {
+			mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY;
+		}
+	#else
+		mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_ERASE;
+	#endif
+#else
 	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_ERASE;
+#endif
 
 	/*
 	 * If we send the CMD23 before multi block write/read command

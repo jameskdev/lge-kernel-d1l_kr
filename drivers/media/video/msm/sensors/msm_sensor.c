@@ -305,6 +305,26 @@ int32_t msm_sensor_get_output_info(struct msm_sensor_ctrl_t *s_ctrl,
 	return rc;
 }
 
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+int32_t msm_sensor_release(struct msm_sensor_ctrl_t *s_ctrl)
+{
+	long fps = 0;
+	uint32_t delay = 0;
+	CDBG("%s called\n", __func__);
+	s_ctrl->func_tbl->sensor_stop_stream(s_ctrl);
+	if (s_ctrl->curr_res != MSM_SENSOR_INVALID_RES) {
+		fps = s_ctrl->msm_sensor_reg->
+			output_settings[s_ctrl->curr_res].vt_pixel_clk /
+			s_ctrl->curr_frame_length_lines /
+			s_ctrl->curr_line_length_pclk;
+		delay = 1000 / fps;
+		CDBG("%s fps = %ld, delay = %d\n", __func__, fps, delay);
+		msleep(delay);
+	}
+	return 0;
+}
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+
 long msm_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 			unsigned int cmd, void *arg)
 {
@@ -313,6 +333,12 @@ long msm_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 	switch (cmd) {
 	case VIDIOC_MSM_SENSOR_CFG:
 		return s_ctrl->func_tbl->sensor_config(s_ctrl, argp);
+
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+	case VIDIOC_MSM_SENSOR_RELEASE:
+		return msm_sensor_release(s_ctrl);
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -384,8 +410,33 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 					cdata.rs);
 			break;
 
+/* LGE_CHANGE_S, Implementation of SoC Sensor features for v4l2 system, 2012.02.02, yongjin1.kim@lge.com */
+#ifdef CONFIG_MACH_LGE
+		case CFG_SET_WB:
+			rc = s_ctrl->func_tbl->
+				sensor_set_wb(
+					s_ctrl,
+					cdata.cfg.wb_val);
+			break;
+
+		case CFG_SET_EFFECT:
+			rc = s_ctrl->func_tbl->
+				sensor_set_effect(
+					s_ctrl,
+					cdata.cfg.effect);
+			break;
+
+		case CFG_SET_BRIGHTNESS:
+			rc = s_ctrl->func_tbl->
+				sensor_set_brightness(
+					s_ctrl,
+					cdata.cfg.brightness);
+			break;
+#else
 		case CFG_SET_EFFECT:
 			break;
+#endif
+/* LGE_CHANGE_E, Implementation of SoC Sensor features for v4l2 system, 2012.02.02, yongjin1.kim@lge.com */
 
 		case CFG_SENSOR_INIT:
 			if (s_ctrl->func_tbl->
@@ -434,6 +485,24 @@ int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 				sizeof(struct sensor_eeprom_data_t)))
 				rc = -EFAULT;
 			break;
+
+		//Start :randy@qualcomm.com for calibration 2012.03.25
+		case CFG_GET_CALIB_DATA:
+			if (s_ctrl->func_tbl->sensor_get_eeprom_data
+				== NULL) {
+				rc = -EFAULT;
+				break;
+			}
+			rc = s_ctrl->func_tbl->sensor_get_eeprom_data(
+				s_ctrl,
+				&cdata);
+
+			if (copy_to_user((void *)argp,
+				&cdata,
+				sizeof(cdata)))
+				rc = -EFAULT;
+			break;
+		//End :randy@qualcomm.com for calibration 2012.03.25
 
 		default:
 			rc = -EFAULT;
@@ -655,8 +724,16 @@ int32_t msm_sensor_power(struct v4l2_subdev *sd, int on)
 	mutex_lock(s_ctrl->msm_sensor_mutex);
 	if (on)
 		rc = s_ctrl->func_tbl->sensor_power_up(s_ctrl);
-	else
+	else {
+#if 0 //QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+		v4l2_subdev_notify(&s_ctrl->sensor_v4l2_subdev,
+			NOTIFY_ISPIF_STREAM, (void *)ISPIF_STREAM(
+			PIX_0, ISPIF_OFF_IMMEDIATELY));
+		s_ctrl->func_tbl->sensor_stop_stream(s_ctrl);
+		msleep(30);
+#endif
 		rc = s_ctrl->func_tbl->sensor_power_down(s_ctrl);
+	}
 	mutex_unlock(s_ctrl->msm_sensor_mutex);
 	return rc;
 }

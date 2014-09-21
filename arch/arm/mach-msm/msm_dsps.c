@@ -38,8 +38,25 @@
 #include <mach/msm_dsps.h>
 #include <mach/subsystem_restart.h>
 #include <mach/subsystem_notif.h>
-
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE
+ * Stand-alone build should be possible, otherwise we violate GPL.
+ * "#include <timer.h> which is qct's orginal code can cause build error
+ * about incorrect including path. Include path of current directory
+ * may be set somewhere in Android build system, so build error can't
+ * be seen in total android build procedure. However, this is the violation
+ * of GPL obviously.
+ * 2012-02-05, cleaneye.kim@lge.com
+ */
+#include "timer.h"
+#else
 #include <timer.h>
+#endif
+
+#if defined(CONFIG_LGE_HANDLE_PANIC) 
+#include <mach/restart.h>
+#include <mach/board_lge.h>
+#endif
 
 #define DRV_NAME	"msm_dsps"
 #define DRV_VERSION	"3.02"
@@ -657,10 +674,18 @@ static void dsps_fatal_handler(struct work_struct *work)
 	if (dsps_state & SMSM_RESET) {
 		pr_err("%s: DSPS fatal error detected. Resetting\n",
 		       __func__);
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		lge_set_magic_for_subsystem("dsps");
+		msm_set_restart_mode(0x6d633130);
+#endif
 		panic("DSPS fatal error detected.");
 	} else {
 		pr_debug("%s: User-initiated DSPS reset. Resetting\n",
 			 __func__);
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		lge_set_magic_for_subsystem("dsps");
+		msm_set_restart_mode(0x6d633130);
+#endif
 		panic("User-initiated DSPS reset.");
 	}
 }
@@ -685,6 +710,10 @@ static void dsps_smsm_state_cb(void *data, uint32_t old_state,
 		pr_err
 		    ("%s: SMSM_RESET state detected. restarting the DSPS\n",
 		     __func__);
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		lge_set_magic_for_subsystem("dsps");
+		msm_set_restart_mode(0x6d633130);
+#endif
 		panic("SMSM_RESET state detected.");
 	}
 }

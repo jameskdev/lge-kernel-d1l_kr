@@ -29,8 +29,14 @@ int mask_request_validate(unsigned char mask_buf[]);
 void diag_clear_reg(int);
 int chk_apps_only(void);
 void diag_send_event_mask_update(smd_channel_t *, int num_bytes);
+#if defined(CONFIG_MACH_MSM8960_D1L_KR)	// 2012.05.01 james.park@lge.com: applying diag patches from QCT Case#00823742.
+void diag_send_msg_mask_update(smd_channel_t *, int ssid_first,
+					 int ssid_last, int proc);
+void diag_send_log_mask_update(smd_channel_t *, int);
+#else
 void diag_send_msg_mask_update(smd_channel_t *);
 void diag_send_log_mask_update(smd_channel_t *);
+#endif /* CONFIG_MACH_MSM8960_D1L_KR */
 /* State for diag forwarding */
 #ifdef CONFIG_DIAG_OVER_USB
 int diagfwd_connect(void);

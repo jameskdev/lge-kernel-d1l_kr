@@ -432,6 +432,7 @@ static void vfe32_subdev_notify(int id, int path)
 	rp = msm_isp_sync_alloc(sizeof(struct msm_vfe_resp), GFP_ATOMIC);
 	if (!rp) {
 		CDBG("rp: cannot allocate buffer\n");
+		spin_unlock_irqrestore(&vfe32_ctrl->sd_notify_lock, flags);
 		return;
 	}
 	CDBG("vfe32_subdev_notify : msgId = %d\n", id);

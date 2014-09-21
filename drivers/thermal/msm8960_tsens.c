@@ -23,7 +23,13 @@
 #include <linux/slab.h>
 #include <linux/msm_tsens.h>
 #include <linux/io.h>
-
+#ifdef CONFIG_MACH_LGE
+#include <linux/err.h>
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
+#endif
+#endif
 #include <mach/msm_iomap.h>
 #include <mach/socinfo.h>
 
@@ -134,6 +140,161 @@ struct tsens_tm_device {
 
 struct tsens_tm_device *tmdev;
 
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_DEBUG_FS
+struct dentry *msm8960_tsens_debugfs_root;
+unsigned long debug_temp[5];
+
+ssize_t debug_temp_show(struct file *file, char __user *buf, size_t cnt,
+							loff_t *ppos)
+{
+	int i;
+
+	for (i = 0; i < tmdev->tsens_num_sensor; i++) {
+		pr_info("tsens_tz_sensor%d debug temperature: %lu\n", i,
+			debug_temp[i]);
+	}
+
+	return 0;
+}
+
+ssize_t debug_tsens0_temp_store(struct file *file, const char __user *buf,
+							size_t cnt, loff_t *ppos)
+{
+	char temp[3];
+
+	if (copy_from_user((void *)temp, buf, 3)) {
+		pr_err("Unable to copy data from user space\n");
+		return -EFAULT;
+	}
+	if (sscanf(temp, "%lu", &debug_temp[0]) != 1) {
+		pr_err("invalid argument\n");
+		return -EINVAL;
+	}
+
+	pr_info("Set tsens_tz_sensor0 temperature to %lu\n", debug_temp[0]);
+
+	/* Notify user space */
+	schedule_work(&tmdev->sensor[0].work);
+
+	return cnt;
+}
+
+ssize_t debug_tsens1_temp_store(struct file *file, const char __user *buf,
+							size_t cnt, loff_t *ppos)
+{
+	char temp[3];
+
+	if (copy_from_user((void *)temp, buf, 3)) {
+		pr_err("Unable to copy data from user space\n");
+		return -EFAULT;
+	}
+	if (sscanf(temp, "%lu", &debug_temp[1]) != 1) {
+		pr_err("invalid argument\n");
+		return -EINVAL;
+	}
+
+	pr_info("Set tsens_tz_sensor1 temperature to %lu\n", debug_temp[1]);
+
+	/* Notify user space */
+	schedule_work(&tmdev->sensor[1].work);
+
+	return cnt;
+}
+
+ssize_t debug_tsens2_temp_store(struct file *file, const char __user *buf,
+							size_t cnt, loff_t *ppos)
+{
+	char temp[3];
+
+	if (copy_from_user((void *)temp, buf, 3)) {
+		pr_err("Unable to copy data from user space\n");
+		return -EFAULT;
+	}
+	if (sscanf(temp, "%lu", &debug_temp[2]) != 1) {
+		pr_err("invalid argument\n");
+		return -EINVAL;
+	}
+
+	pr_info("Set tsens_tz_sensor2 temperature to %lu\n", debug_temp[2]);
+
+	/* Notify user space */
+	schedule_work(&tmdev->sensor[2].work);
+
+	return cnt;
+}
+
+ssize_t debug_tsens3_temp_store(struct file *file, const char __user *buf,
+							size_t cnt, loff_t *ppos)
+{
+	char temp[3];
+
+	if (copy_from_user((void *)temp, buf, 3)) {
+		pr_err("Unable to copy data from user space\n");
+		return -EFAULT;
+	}
+	if (sscanf(temp, "%lu", &debug_temp[3]) != 1) {
+		pr_err("invalid argument\n");
+		return -EINVAL;
+	}
+
+	pr_info("Set tsens_tz_sensor3 temperature to %lu\n", debug_temp[3]);
+
+	/* Notify user space */
+	schedule_work(&tmdev->sensor[3].work);
+
+	return cnt;
+}
+
+ssize_t debug_tsens4_temp_store(struct file *file, const char __user *buf,
+							size_t cnt, loff_t *ppos)
+{
+	char temp[3];
+
+	if (copy_from_user((void *)temp, buf, 3)) {
+		pr_err("Unable to copy data from user space\n");
+		return -EFAULT;
+	}
+	if (sscanf(temp, "%lu", &debug_temp[4]) != 1) {
+		pr_err("invalid argument\n");
+		return -EINVAL;
+	}
+
+	pr_info("Set tsens_tz_sensor4 temperature to %lu\n", debug_temp[4]);
+
+	/* Notify user space */
+	schedule_work(&tmdev->sensor[4].work);
+
+	return cnt;
+}
+
+static const struct file_operations msm8960_tsens0_temp_fops = {
+	.read = debug_temp_show,
+	.write = debug_tsens0_temp_store,
+};
+
+static const struct file_operations msm8960_tsens1_temp_fops = {
+	.read = debug_temp_show,
+	.write = debug_tsens1_temp_store,
+};
+
+static const struct file_operations msm8960_tsens2_temp_fops = {
+	.read = debug_temp_show,
+	.write = debug_tsens2_temp_store,
+};
+
+static const struct file_operations msm8960_tsens3_temp_fops = {
+	.read = debug_temp_show,
+	.write = debug_tsens3_temp_store,
+};
+
+static const struct file_operations msm8960_tsens4_temp_fops = {
+	.read = debug_temp_show,
+	.write = debug_tsens4_temp_store,
+};
+#endif
+#endif
+
 /* Temperature on y axis and ADC-code on x-axis */
 static int tsens_tz_code_to_degC(int adc_code, int sensor_num)
 {
@@ -170,6 +331,14 @@ static int tsens_tz_degC_to_code(int degC, int sensor_num)
 static void tsens8960_get_temp(int sensor_num, unsigned long *temp)
 {
 	unsigned int code;
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_DEBUG_FS
+	if (debug_temp[sensor_num] != 0) {
+		*temp = debug_temp[sensor_num];
+		return;
+	}
+#endif
+#endif
 
 	if (!tmdev->prev_reading_avail) {
 		while (!(readl_relaxed(TSENS_INT_STATUS_ADDR)
@@ -823,6 +992,38 @@ static int __init tsens_tm_init(void)
 		return -EFAULT;
 	}
 
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_DEBUG_FS
+	memset(debug_temp, 0x0, sizeof(debug_temp));
+
+	msm8960_tsens_debugfs_root = debugfs_create_dir("msm8960_tsens", NULL);
+	if (IS_ERR(msm8960_tsens_debugfs_root) || !msm8960_tsens_debugfs_root) {
+		pr_err("MSM8960 TSENS: Failed to create debugfs directory\n");
+		msm8960_tsens_debugfs_root = NULL;
+	}
+
+	if (!debugfs_create_file("tsens_tz_sensor0", 0644,
+		msm8960_tsens_debugfs_root, NULL, &msm8960_tsens0_temp_fops))
+		pr_err("MSM8960 TSENS: Failed to create msm8960_tsens0_temp debugfs file\n");
+
+	if (!debugfs_create_file("tsens_tz_sensor1", 0644,
+		msm8960_tsens_debugfs_root, NULL, &msm8960_tsens1_temp_fops))
+		pr_err("MSM8960 TSENS: Failed to create msm8960_tsens0_temp debugfs file\n");
+
+	if (!debugfs_create_file("tsens_tz_sensor2", 0644,
+		msm8960_tsens_debugfs_root, NULL, &msm8960_tsens2_temp_fops))
+		pr_err("MSM8960 TSENS: Failed to create msm8960_tsens0_temp debugfs file\n");
+
+	if (!debugfs_create_file("tsens_tz_sensor3", 0644,
+		msm8960_tsens_debugfs_root, NULL, &msm8960_tsens3_temp_fops))
+		pr_err("MSM8960 TSENS: Failed to create msm8960_tsens0_temp debugfs file\n");
+
+	if (!debugfs_create_file("tsens_tz_sensor4", 0644,
+		msm8960_tsens_debugfs_root, NULL, &msm8960_tsens4_temp_fops))
+		pr_err("MSM8960 TSENS: Failed to create msm8960_tsens0_temp debugfs file\n");
+#endif
+#endif
+
 	for (i = 0; i < tmdev->tsens_num_sensor; i++) {
 		char name[17];
 		snprintf(name, sizeof(name), "tsens_tz_sensor%d", i);
@@ -831,7 +1032,13 @@ static int __init tsens_tm_init(void)
 		tmdev->sensor[i].tz_dev = thermal_zone_device_register(name,
 				TSENS_TRIP_NUM, &tmdev->sensor[i],
 				&tsens_thermal_zone_ops, 0, 0, 0, 0);
+#ifdef CONFIG_MACH_LGE
+		/* 2012-01-10 modify error detection code
+		 * thermal_zone_device_register function does not return null when error occurs */
+		if (IS_ERR(tmdev->sensor[i].tz_dev)) {
+#else	/* origin */
 		if (tmdev->sensor[i].tz_dev == NULL) {
+#endif
 			pr_err("%s: thermal_zone_device_register() failed.\n",
 			__func__);
 			rc = -ENODEV;
@@ -866,6 +1073,11 @@ static void __exit tsens_tm_remove(void)
 {
 	int i;
 
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(msm8960_tsens_debugfs_root);
+#endif
+#endif
 	tsens_disable_mode();
 	mb();
 	free_irq(TSENS_UPPER_LOWER_INT, tmdev);

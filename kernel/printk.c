@@ -622,6 +622,11 @@ static size_t log_prefix(const char *p, unsigned int *level, char *special)
 	if (p[2] == '>') {
 		/* usual single digit level number or special char */
 		switch (p[1]) {
+#ifdef CONFIG_LGE_LOG_SERVICE
+		case 'B':   /* boot */
+		case 'W':   /* wakeup */
+		case 'S':   /* start logging */
+#endif
 		case '0' ... '7':
 			lev = p[1] - '0';
 			break;
@@ -926,6 +931,9 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 
 
 	p = printk_buf;
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	store_crash_log(p);
+#endif
 
 	/* Read log level and handle special printk prefix */
 	plen = log_prefix(p, &current_log_level, &special);

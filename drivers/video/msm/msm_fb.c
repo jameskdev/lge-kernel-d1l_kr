@@ -48,18 +48,48 @@
 #include "mdp.h"
 #include "mdp4.h"
 
+/* LGE_CHANGE
+ * for inital qct lcdc lut set-up
+ * 2012-01-10, jh.chun@lge.com
+ */
+#if defined (CONFIG_LGE_QC_LCDC_LUT)
+#include "lge_qlut.h"
+int g_qlut_change_by_kernel;
+EXPORT_SYMBOL(g_qlut_change_by_kernel);
+#endif
+
 #ifdef CONFIG_FB_MSM_LOGO
 #define INIT_IMAGE_FILE "/initlogo.rle"
+#if defined(CONFIG_MACH_LGE) && \
+	(defined(CONFIG_FB_MSM_DEFAULT_DEPTH_ARGB8888) ||\
+	 defined(CONFIG_FB_MSM_DEFAULT_DEPTH_RGBA8888))
+/* LGE_CHANGE
+ * To load 888rle format images
+ * 2011-10-20, baryun.hwang@lge.com
+ */
+extern int load_888rle_image(char *filename);
+#else /*qct original code */
 extern int load_565rle_image(char *filename);
+#endif
 #endif
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_NUM	3
 #endif
 
+#define QCT_PATCH
 static unsigned char *fbram;
 static unsigned char *fbram_phys;
 static int fbram_size;
+
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE
+ * patch from QCT.
+ * Add code for crash in hdmi_pll_enable()
+ * 2010-03-15, soodong.kim@lge.com
+ */
+bool device_suspended = FALSE;
+#endif
 
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
@@ -109,6 +139,13 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg);
 static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma);
 
+/* 11.03.16 jaeseong.gim@lge.com
+   implement "msm_fb_read" for screenshot such as DDMS" */
+#ifdef CONFIG_LGE_DISP_FBREAD
+static ssize_t msm_fb_read(struct fb_info *info, char __user *buf,
+		size_t count, loff_t *ppos);
+#endif
+
 #ifdef MSM_FB_ENABLE_DBGFS
 
 #define MSM_FB_MAX_DBGFS 1024
@@ -157,6 +194,18 @@ int msm_fb_cursor(struct fb_info *info, struct fb_cursor *cursor)
 }
 
 static int msm_fb_resource_initialized;
+
+
+#if defined(CONFIG_MACH_LGE) && \
+	(defined(CONFIG_FB_MSM_DEFAULT_DEPTH_ARGB8888) ||\
+	 defined(CONFIG_FB_MSM_DEFAULT_DEPTH_RGBA8888))
+
+/* LGE_CHANGE
+ * for early backlight on
+ * 2011-10-20, baryun.hwang@lge.com
+ */
+static int saved_backlight_level = -1;
+#endif
 
 #ifndef CONFIG_FB_BACKLIGHT
 static int lcd_backlight_registered;
@@ -560,6 +609,7 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 				      mfd->op_enable);
 		if (ret)
 			MSM_FB_INFO("msm_fb_resume: can't turn on display!\n");
+
 	} else {
 		if (pdata->power_ctrl)
 			pdata->power_ctrl(TRUE);
@@ -624,8 +674,19 @@ static int msm_fb_ext_suspend(struct device *dev)
 
 	if (mfd->panel_info.type == HDMI_PANEL ||
 		mfd->panel_info.type == DTV_PANEL)
+#ifdef CONFIG_MACH_LGE
+        /* LGE_CHANGE
+         * patch from QCT.
+         * Add code for crash in hdmi_pll_enable()
+         * 2010-03-15, soodong.kim@lge.com
+         */
+	{
+		device_suspended = TRUE;
 		ret = msm_fb_suspend_sub(mfd);
-
+	}
+#else /* QCT original */
+                ret = msm_fb_suspend_sub(mfd);
+#endif
 	return ret;
 }
 
@@ -639,8 +700,19 @@ static int msm_fb_ext_resume(struct device *dev)
 
 	if (mfd->panel_info.type == HDMI_PANEL ||
 		mfd->panel_info.type == DTV_PANEL)
+#ifdef CONFIG_MACH_LGE
+        /* LGE_CHANGE
+         * patch from QCT.
+         * Add code for crash in hdmi_pll_enable()
+         * 2010-03-15, soodong.kim@lge.com
+         */
+	{
+		device_suspended = FALSE;
 		ret = msm_fb_resume_sub(mfd);
-
+	}
+#else /* QCT original */
+                ret = msm_fb_suspend_sub(mfd);
+#endif
 	return ret;
 }
 
@@ -717,7 +789,15 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 
 	if (!mfd->panel_power_on || !bl_updated) {
 		unset_bl_level = bkl_lvl;
-		return;
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE
+		 * Only when booting state,
+		 * it turns on backlight right after showing booting logo image
+		 * 2012-01-13, baryun.hwang@lge.com
+		 */
+		if (system_state != SYSTEM_BOOTING)
+#endif
+			return;
 	} else {
 		unset_bl_level = 0;
 	}
@@ -756,7 +836,15 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on) {
+	/* LGE_CHANGE
+	 * Reduce delay time only for D1LV
+	 * 2012-04-06, baryun.hwang@lge.com
+	 */
+#ifdef CONFIG_MACH_MSM8960_D1LV
+			msleep(5);
+#else
 			msleep(16);
+#endif
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
 				mfd->panel_power_on = TRUE;
@@ -792,7 +880,6 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			ret = pdata->off(mfd->pdev);
 			if (ret)
 				mfd->panel_power_on = curr_pwr_state;
-
 			mfd->op_enable = TRUE;
 		} else {
 			if (pdata->power_ctrl)
@@ -940,7 +1027,13 @@ static struct fb_ops msm_fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_open = msm_fb_open,
 	.fb_release = msm_fb_release,
+/* 11.03.16 jaeseong.gim@lge.com
+   implement "msm_fb_read" for screenshot such as DDMS" */
+#ifdef CONFIG_LGE_DISP_FBREAD
+    .fb_read = msm_fb_read,
+#else
 	.fb_read = NULL,
+#endif
 	.fb_write = NULL,
 	.fb_cursor = NULL,
 	.fb_check_var = msm_fb_check_var,	/* vinfo check */
@@ -1161,20 +1254,44 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		/*
 		 * id field for fb app
 		 */
-	    id = (int *)&mfd->panel;
+	id = (int *)&mfd->panel;
 
-#if defined(CONFIG_FB_MSM_MDP22)
-	snprintf(fix->id, sizeof(fix->id), "msmfb22_%x", (__u32) *id);
-#elif defined(CONFIG_FB_MSM_MDP30)
-	snprintf(fix->id, sizeof(fix->id), "msmfb30_%x", (__u32) *id);
-#elif defined(CONFIG_FB_MSM_MDP31)
-	snprintf(fix->id, sizeof(fix->id), "msmfb31_%x", (__u32) *id);
-#elif defined(CONFIG_FB_MSM_MDP40)
-	snprintf(fix->id, sizeof(fix->id), "msmfb40_%x", (__u32) *id);
-#else
-	error CONFIG_FB_MSM_MDP undefined !
-#endif
-	 fbi->fbops = &msm_fb_ops;
+	switch (mdp_rev) {
+	case MDP_REV_20:
+		snprintf(fix->id, sizeof(fix->id), "msmfb20_%x", (__u32) *id);
+		break;
+	case MDP_REV_22:
+		snprintf(fix->id, sizeof(fix->id), "msmfb22_%x", (__u32) *id);
+		break;
+	case MDP_REV_30:
+		snprintf(fix->id, sizeof(fix->id), "msmfb30_%x", (__u32) *id);
+		break;
+	case MDP_REV_303:
+		snprintf(fix->id, sizeof(fix->id), "msmfb303_%x", (__u32) *id);
+		break;
+	case MDP_REV_31:
+		snprintf(fix->id, sizeof(fix->id), "msmfb31_%x", (__u32) *id);
+		break;
+	case MDP_REV_40:
+		snprintf(fix->id, sizeof(fix->id), "msmfb40_%x", (__u32) *id);
+		break;
+	case MDP_REV_41:
+		snprintf(fix->id, sizeof(fix->id), "msmfb41_%x", (__u32) *id);
+		break;
+	case MDP_REV_42:
+		snprintf(fix->id, sizeof(fix->id), "msmfb42_%x", (__u32) *id);
+		break;
+	case MDP_REV_43:
+		snprintf(fix->id, sizeof(fix->id), "msmfb43_%x", (__u32) *id);
+		break;
+	case MDP_REV_44:
+		snprintf(fix->id, sizeof(fix->id), "msmfb44_%x", (__u32) *id);
+		break;
+	default:
+		break;
+	}
+
+	fbi->fbops = &msm_fb_ops;
 	fbi->flags = FBINFO_FLAG_DEFAULT;
 	fbi->pseudo_palette = msm_fb_pseudo_palette;
 
@@ -1253,7 +1370,34 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	     mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
 
 #ifdef CONFIG_FB_MSM_LOGO
+#if defined(CONFIG_MACH_LGE) && \
+	(defined(CONFIG_FB_MSM_DEFAULT_DEPTH_ARGB8888) ||\
+	 defined(CONFIG_FB_MSM_DEFAULT_DEPTH_RGBA8888))
+	/* LGE_CHANGE
+	 * This function is used to load LG logo image in 888 rle format.
+	 * However, it is only allowed when MIPI LCD mode not other modes
+	 * such as HDMI, DTV etc.
+	 * it is also add early backlight on
+	 * 2011-10-20, baryun.hwang@lge.com
+	 */
+	if (mfd->panel_info.type == MIPI_VIDEO_PANEL ||
+			mfd->panel_info.type == MIPI_CMD_PANEL){
+		msm_fb_open(mfd->fbi, 0);
+		msm_fb_set_backlight(mfd, 0);
+
+#if defined(CONFIG_LGE_QC_LCDC_LUT)
+		lge_set_qlut();
+#endif
+		if (load_888rle_image(INIT_IMAGE_FILE) < 0) /* Flip buffer */
+			printk(KERN_WARNING "fail to load 888 rle image\n");
+
+		msm_fb_set_backlight(mfd, saved_backlight_level);
+	}
+
+
+#else /* QCT orignal code */
 	if (!load_565rle_image(INIT_IMAGE_FILE)) ;	/* Flip buffer */
+#endif
 #endif
 	ret = 0;
 
@@ -3123,6 +3267,14 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 				__func__);
 			return ret;
 		}
+
+#ifdef CONFIG_LGE_BROADCAST_TDMB
+		if(csc_matrix.id == -1) {
+			memcpy(mdp_csc_convert[1].csc_mv, csc_matrix.csc_mv, sizeof(csc_matrix.csc_mv));
+			break;
+		}
+#endif /* CONFIG_LGE_BROADCAST */
+
 		down(&msm_fb_ioctl_ppp_sem);
 		msmfb_set_color_conv(&csc_matrix);
 		up(&msm_fb_ioctl_ppp_sem);
@@ -3518,5 +3670,109 @@ int __init msm_fb_init(void)
 
 	return 0;
 }
+
+/* 11.03.16 jaeseong.gim@lge.com
+    implement "msm_fb_read" for screenshot such as DDMS" */
+#ifdef CONFIG_LGE_DISP_FBREAD
+static ssize_t
+msm_fb_read(struct fb_info *info, char __user *buf, size_t count, loff_t *ppos)
+{
+
+    unsigned long p = *ppos;
+    u32 *buffer;
+    u8 *dst;
+    u8 __iomem *src;
+    u8 r, g, b;
+    int c, i, cnt = 0, err = 0;
+    unsigned long total_size;
+    int line_length, xres, bpp;
+
+	total_size = info->screen_size;
+
+    if (total_size == 0)
+        total_size = info->fix.smem_len;
+
+    if (p >= total_size)
+		return 0;
+
+	if (count >= total_size)
+        count = total_size;
+
+	if (count + p > total_size)
+		count = total_size - p;
+
+	buffer = kmalloc((count > PAGE_SIZE) ? PAGE_SIZE : count,
+			GFP_KERNEL);
+
+	if (!buffer)
+		return -ENOMEM;
+
+    src = (u8 __iomem *) (info->screen_base + p);
+
+    xres = info->var.xres;
+    line_length = ALIGN(xres, 32);
+
+    bpp = info->var.bits_per_pixel/8;
+
+    for (i = 0; i < count; i += 4){
+
+		c = 4;
+		r = fb_readb(src++);
+		g = fb_readb(src++);
+		b = fb_readb(src++);
+		src++;
+
+		*ppos += c;
+
+		if ((p+i)%(line_length*bpp) >= xres*bpp)
+			continue;
+
+		dst = (u8 *)buffer;
+		*dst++ = r;
+		*dst++ = g;
+		*dst++ = b;
+		*dst++ = 0xff;
+
+		if (copy_to_user(buf, buffer, c)) {
+			err = -EFAULT;
+			break;
+		}
+
+		cnt += c;
+		buf += c;
+	}
+
+    kfree(buffer);
+
+    return (err) ? err : cnt;
+}
+#endif
+
+#if defined(CONFIG_LGE_QC_LCDC_LUT)
+int lge_set_qlut(void)
+{
+	struct fb_cmap cmap;
+	int ret = 0;
+
+	cmap.start	= 0;
+	cmap.len	= 256;
+	cmap.transp	= 0;
+	cmap.red	= NULL;
+	cmap.green	= NULL;
+	cmap.blue	= NULL;
+
+	mutex_lock(&msm_fb_ioctl_lut_sem);
+		g_qlut_change_by_kernel = 1;
+		ret = msm_fb_set_lut(&cmap, fbi_list[0]);
+		g_qlut_change_by_kernel = 0;
+	mutex_unlock(&msm_fb_ioctl_lut_sem);
+
+	if(ret)
+		printk(KERN_ERR "lge_set_initial_lut faild : %d\n", ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(lge_set_qlut);
+#endif
 
 module_init(msm_fb_init);

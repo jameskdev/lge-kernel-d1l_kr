@@ -762,7 +762,12 @@ static void create_eir(struct hci_dev *hdev, u8 *data)
 	struct list_head *p;
 	size_t name_len;
 
+// *s QCT_BT_COMMON_PATCH_CS6
 	name_len = strnlen(hdev->dev_name, HCI_MAX_EIR_LENGTH);
+	/* google original
+	name_len = strlen(hdev->dev_name);
+	*/
+// *e QCT_BT_COMMON_PATCH_CS6
 
 	if (name_len > 0) {
 		/* EIR Data type */
@@ -890,7 +895,9 @@ static int add_uuid(struct sock *sk, u16 index, unsigned char *data, u16 len)
 
 	list_add(&uuid->list, &hdev->uuids);
 
+// +s QCT_BT_COMMON_PATCH_CS6
 	if (test_bit(HCI_UP, &hdev->flags)) {
+// +e QCT_BT_COMMON_PATCH_CS6
 
 		err = update_class(hdev);
 		if (err < 0)
@@ -899,8 +906,10 @@ static int add_uuid(struct sock *sk, u16 index, unsigned char *data, u16 len)
 		err = update_eir(hdev);
 		if (err < 0)
 			goto failed;
+// +s QCT_BT_COMMON_PATCH_CS6
 	} else
 		err = 0;
+// +e QCT_BT_COMMON_PATCH_CS6
 
 	err = cmd_complete(sk, index, MGMT_OP_ADD_UUID, NULL, 0);
 
@@ -954,7 +963,9 @@ static int remove_uuid(struct sock *sk, u16 index, unsigned char *data, u16 len)
 		goto unlock;
 	}
 
+// +s QCT_BT_COMMON_PATCH_CS6
 	if (test_bit(HCI_UP, &hdev->flags)) {
+// +e QCT_BT_COMMON_PATCH_CS6
 		err = update_class(hdev);
 		if (err < 0)
 			goto unlock;
@@ -962,8 +973,10 @@ static int remove_uuid(struct sock *sk, u16 index, unsigned char *data, u16 len)
 		err = update_eir(hdev);
 		if (err < 0)
 			goto unlock;
+// +s QCT_BT_COMMON_PATCH_CS6
 	} else
 		err = 0;
+// +e QCT_BT_COMMON_PATCH_CS6
 
 	err = cmd_complete(sk, index, MGMT_OP_REMOVE_UUID, NULL, 0);
 
@@ -998,10 +1011,13 @@ static int set_dev_class(struct sock *sk, u16 index, unsigned char *data,
 	hdev->major_class |= cp->major & MGMT_MAJOR_CLASS_MASK;
 	hdev->minor_class = cp->minor;
 
+// +s QCT_BT_COMMON_PATCH_CS6
 	if (test_bit(HCI_UP, &hdev->flags))
 		err = update_class(hdev);
+// +s QCT_BT_COMMON_PATCH_CS6
 	else
 		err = 0;
+// +e QCT_BT_COMMON_PATCH_CS6
 
 	if (err == 0)
 		err = cmd_complete(sk, index, MGMT_OP_SET_DEV_CLASS, NULL, 0);
@@ -1037,12 +1053,16 @@ static int set_service_cache(struct sock *sk, u16 index,  unsigned char *data,
 		err = 0;
 	} else {
 		clear_bit(HCI_SERVICE_CACHE, &hdev->flags);
+// +s QCT_BT_COMMON_PATCH_CS6
 		if (test_bit(HCI_UP, &hdev->flags)) {
+// +e QCT_BT_COMMON_PATCH_CS6
 			err = update_class(hdev);
 			if (err == 0)
 				err = update_eir(hdev);
+// +s QCT_BT_COMMON_PATCH_CS6
 		} else
 			err = 0;
+// +e QCT_BT_COMMON_PATCH_CS6
 	}
 
 	if (err == 0)
@@ -1614,13 +1634,26 @@ static int pair_device(struct sock *sk, u16 index, unsigned char *data, u16 len)
 	hci_dev_lock_bh(hdev);
 
 	io_cap = cp->io_cap;
+// *s QCT_BT_COMMON_PATCH_SBA1044
+//-s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
+    /* QCT Original
 	if (io_cap == 0x03) {
+	*/
+//-e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
+    /* QCT Original
+	if ((cp->ssp_cap == 0) || (io_cap == 0x03)) {
+    */
+// *e QCT_BT_COMMON_PATCH_SBA1044
 		sec_level = BT_SECURITY_MEDIUM;
 		auth_type = HCI_AT_DEDICATED_BONDING;
+//-s LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH, [younghyun.kwon@lge.com 120412]
+    /* QCT Original
 	} else {
 		sec_level = BT_SECURITY_HIGH;
 		auth_type = HCI_AT_DEDICATED_BONDING_MITM;
 	}
+	*/
+//-e LGBT_COMMON_BUGFIX_QCT_SECURITY_PATCH
 
 	entry = hci_find_adv_entry(hdev, &cp->bdaddr);
 	if (entry && entry->flags & 0x04) {
@@ -1632,7 +1665,9 @@ static int pair_device(struct sock *sk, u16 index, unsigned char *data, u16 len)
 			io_cap = 0x01;
 		conn = hci_connect(hdev, ACL_LINK, 0, &cp->bdaddr, sec_level,
 								auth_type);
+// +s QCT_BT_COMMON_PATCH_SBA1044
 		conn->auth_initiator = 1;
+// +e QCT_BT_COMMON_PATCH_SBA1044
 	}
 
 	if (IS_ERR(conn)) {
@@ -1810,6 +1845,7 @@ failed:
 	return err;
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 static int set_rssi_reporter(struct sock *sk, u16 index,
 				unsigned char *data, u16 len)
 {
@@ -1884,6 +1920,7 @@ failed:
 
 	return err;
 }
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 static int set_local_name(struct sock *sk, u16 index, unsigned char *data,
 								u16 len)
@@ -1988,8 +2025,12 @@ void mgmt_inquiry_complete_evt(u16 index, u8 status)
 		err = hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
 						sizeof(le_cp), &le_cp);
 		if (err >= 0) {
-			mod_timer(&hdev->disco_le_timer, jiffies +
-				msecs_to_jiffies(hdev->disco_int_phase * 1000));
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+// Do not allocate too much time on BTLE scan. Use fixed 5 seconds. 
+//			mod_timer(&hdev->disco_le_timer, jiffies +
+//				msecs_to_jiffies(hdev->disco_int_phase * 1000));
+			mod_timer(&hdev->disco_le_timer, jiffies + msecs_to_jiffies(5000));
+// +e
 			hdev->disco_state = SCAN_LE;
 		} else
 			hdev->disco_state = SCAN_IDLE;
@@ -2025,13 +2066,14 @@ void mgmt_disco_timeout(unsigned long data)
 	if (hdev->disco_state != SCAN_IDLE) {
 		struct hci_cp_le_set_scan_enable le_cp = {0, 0};
 
+// +s QCT_BT_COMMON_PATCH_CS6
 		if (test_bit(HCI_UP, &hdev->flags)) {
+// +e QCT_BT_COMMON_PATCH_CS6
 			if (hdev->disco_state == SCAN_LE)
 				hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
 							sizeof(le_cp), &le_cp);
-			else
-				hci_send_cmd(hdev, HCI_OP_INQUIRY_CANCEL, 0,
-									 NULL);
+		else
+			hci_send_cmd(hdev, HCI_OP_INQUIRY_CANCEL, 0, NULL);
 		}
 		hdev->disco_state = SCAN_IDLE;
 	}
@@ -2060,19 +2102,24 @@ void mgmt_disco_le_timeout(unsigned long data)
 
 	hci_dev_lock_bh(hdev);
 
+// +s QCT_BT_COMMON_PATCH_CS6
 	if (test_bit(HCI_UP, &hdev->flags)) {
-		if (hdev->disco_state == SCAN_LE)
-			hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
-					sizeof(le_cp), &le_cp);
+// +e QCT_BT_COMMON_PATCH_CS6
+	if (hdev->disco_state == SCAN_LE)
+		hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
+				sizeof(le_cp), &le_cp);
 
 	/* re-start BR scan */
-		if (hdev->disco_state != SCAN_IDLE) {
-			struct hci_cp_inquiry cp = {{0x33, 0x8b, 0x9e}, 4, 0};
-			hdev->disco_int_phase *= 2;
-			hdev->disco_int_count = 0;
-			cp.num_rsp = (u8) hdev->disco_int_phase;
-			hci_send_cmd(hdev, HCI_OP_INQUIRY, sizeof(cp), &cp);
-			hdev->disco_state = SCAN_BR;
+	if (hdev->disco_state != SCAN_IDLE) {
+		struct hci_cp_inquiry cp = {{0x33, 0x8b, 0x9e}, 4, 0};
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+//		hdev->disco_int_phase *= 2;
+//		hdev->disco_int_count = 0;
+//		cp.num_rsp = (u8) hdev->disco_int_phase;
+		cp.num_rsp = 0;
+// +e
+		hci_send_cmd(hdev, HCI_OP_INQUIRY, sizeof(cp), &cp);
+		hdev->disco_state = SCAN_BR;
 		}
 	}
 
@@ -2111,7 +2158,10 @@ static int start_discovery(struct sock *sk, u16 index)
 		struct hci_cp_le_set_scan_parameters le_cp;
 
 		/* Shorten BR scan params */
-		cp.num_rsp = 1;
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+//		cp.num_rsp = 1;
+        cp.num_rsp = 0;
+// +e
 		cp.length /= 2;
 
 		/* Setup LE scan params */
@@ -2137,13 +2187,18 @@ static int start_discovery(struct sock *sk, u16 index)
 		if (!cmd)
 			mgmt_pending_add(sk, MGMT_OP_STOP_DISCOVERY, index,
 								NULL, 0);
-		hdev->disco_int_phase = 1;
-		hdev->disco_int_count = 0;
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+//		hdev->disco_int_phase = 1;
+//		hdev->disco_int_count = 0;
+// +e
 		hdev->disco_state = SCAN_BR;
 		del_timer(&hdev->disco_le_timer);
 		del_timer(&hdev->disco_timer);
+		// +s LGE: LGBT_COMMON_BUGFIX_INCREASE_DISCOVERY_TIME, [sh.shin@lge.com 20120330]
+		// increase discovery time from 20 sec to 50 sec.
 		mod_timer(&hdev->disco_timer,
-				jiffies + msecs_to_jiffies(20000));
+			jiffies + msecs_to_jiffies(50000));
+		// +e
 	}
 
 failed:
@@ -2440,12 +2495,14 @@ int mgmt_control(struct sock *sk, struct msghdr *msg, size_t msglen)
 	case MGMT_OP_SET_CONNECTION_PARAMS:
 		err = set_connection_params(sk, index, buf + sizeof(*hdr), len);
 		break;
+// +s QCT_BT_COMMON_PATCH_SBA1044
 	case MGMT_OP_SET_RSSI_REPORTER:
 		err = set_rssi_reporter(sk, index, buf + sizeof(*hdr), len);
 		break;
 	case MGMT_OP_UNSET_RSSI_REPORTER:
 		err = unset_rssi_reporter(sk, index, buf + sizeof(*hdr), len);
 		break;
+// +e QCT_BT_COMMON_PATCH_SBA1044
 	case MGMT_OP_READ_LOCAL_OOB_DATA:
 		err = read_local_oob_data(sk, index);
 		break;
@@ -2898,6 +2955,7 @@ int mgmt_read_local_oob_data_reply_complete(u16 index, u8 *hash, u8 *randomizer,
 	return err;
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1044
 void mgmt_read_rssi_complete(u16 index, s8 rssi, bdaddr_t *bdaddr,
 		u16 handle, u8 status)
 {
@@ -2947,13 +3005,16 @@ void mgmt_read_rssi_complete(u16 index, s8 rssi, bdaddr_t *bdaddr,
 		}
 	}
 }
+// +e QCT_BT_COMMON_PATCH_SBA1044
 
 
 int mgmt_device_found(u16 index, bdaddr_t *bdaddr, u8 type, u8 le,
 			u8 *dev_class, s8 rssi, u8 eir_len, u8 *eir)
 {
 	struct mgmt_ev_device_found ev;
-	struct hci_dev *hdev;
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+//	struct hci_dev *hdev;
+// +e
 	int err;
 
 	BT_DBG("le: %d", le);
@@ -2976,38 +3037,41 @@ int mgmt_device_found(u16 index, bdaddr_t *bdaddr, u8 type, u8 le,
 	if (err < 0)
 		return err;
 
-	hdev = hci_dev_get(index);
-
-	if (!hdev)
-		return 0;
-
-	if (hdev->disco_state == SCAN_IDLE)
-		goto done;
-
-	hdev->disco_int_count++;
-
-	if (hdev->disco_int_count >= hdev->disco_int_phase) {
-		/* Inquiry scan for General Discovery LAP */
-		struct hci_cp_inquiry cp = {{0x33, 0x8b, 0x9e}, 4, 0};
-		struct hci_cp_le_set_scan_enable le_cp = {0, 0};
-
-		hdev->disco_int_phase *= 2;
-		hdev->disco_int_count = 0;
-		if (hdev->disco_state == SCAN_LE) {
-			/* cancel LE scan */
-			hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
-					sizeof(le_cp), &le_cp);
-			/* start BR scan */
-			cp.num_rsp = (u8) hdev->disco_int_phase;
-			hci_send_cmd(hdev, HCI_OP_INQUIRY,
-					sizeof(cp), &cp);
-			hdev->disco_state = SCAN_BR;
-			del_timer_sync(&hdev->disco_le_timer);
-		}
-	}
-
-done:
-	hci_dev_put(hdev);
+// +s LGE: LGBT_COMMON_FUNCTION_SEARCH_PERFORMANCE, [sh.shin@lge.com 20120405]
+//	hdev = hci_dev_get(index);
+//
+//	if (!hdev)
+//		return 0;
+//
+//	if (hdev->disco_state == SCAN_IDLE)
+//		goto done;
+//
+//	hdev->disco_int_count++;
+//
+//	if (hdev->disco_int_count >= hdev->disco_int_phase) {
+//		/* Inquiry scan for General Discovery LAP */
+//		struct hci_cp_inquiry cp = {{0x33, 0x8b, 0x9e}, 4, 0};
+//		struct hci_cp_le_set_scan_enable le_cp = {0, 0};
+//
+//		hdev->disco_int_phase *= 2;
+//		hdev->disco_int_count = 0;
+//		if (hdev->disco_state == SCAN_LE) {
+//			/* cancel LE scan */
+//			hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
+//					sizeof(le_cp), &le_cp);
+//			/* start BR scan */
+//			cp.num_rsp = 0;
+//			cp.num_rsp = (u8) hdev->disco_int_phase;
+//			hci_send_cmd(hdev, HCI_OP_INQUIRY,
+//					sizeof(cp), &cp);
+//			hdev->disco_state = SCAN_BR;
+//			del_timer_sync(&hdev->disco_le_timer);
+//		}
+//	}
+//
+//done:
+//	hci_dev_put(hdev);
+// +e
 	return 0;
 }
 
@@ -3065,6 +3129,7 @@ int mgmt_remote_version(u16 index, bdaddr_t *bdaddr, u8 ver, u16 mnf,
 	return mgmt_event(MGMT_EV_REMOTE_VERSION, index, &ev, sizeof(ev), NULL);
 }
 
+// +s QCT_BT_COMMON_PATCH_SBA1043
 int mgmt_remote_features(u16 index, bdaddr_t *bdaddr, u8 features[8])
 {
 	struct mgmt_ev_remote_features ev;
@@ -3077,3 +3142,4 @@ int mgmt_remote_features(u16 index, bdaddr_t *bdaddr, u8 features[8])
 	return mgmt_event(MGMT_EV_REMOTE_FEATURES, index, &ev, sizeof(ev),
 									NULL);
 }
+// +e QCT_BT_COMMON_PATCH_SBA1043

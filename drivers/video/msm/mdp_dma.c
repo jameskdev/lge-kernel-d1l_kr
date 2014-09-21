@@ -493,7 +493,12 @@ void mdp_dma2_update(struct msm_fb_data_type *mfd)
 		up(&mfd->sem);
 
 		/* wait until DMA finishes the current job */
-		wait_for_completion_killable(&mfd->dma->comp);
+		/* LGE_CHANGE
+		 * Add this code for screen update when dma completion is failed.
+		 * 2012-03-06, baryun.hwang@lge.com
+		 */
+		if(wait_for_completion_killable(&mfd->dma->comp)< 0)
+			goto out;
 		mdp_disable_irq(MDP_DMA2_TERM);
 
 	/* signal if pan function is waiting for the update completion */
@@ -502,6 +507,7 @@ void mdp_dma2_update(struct msm_fb_data_type *mfd)
 			complete(&mfd->pan_comp);
 		}
 	}
+out:
 	up(&mfd->dma->mutex);
 }
 

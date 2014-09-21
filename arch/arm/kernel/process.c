@@ -128,8 +128,20 @@ void arm_machine_flush_console(void)
 }
 #endif
 
+/* 2012-03-07 jinkyu.choi@lge.com
+ * call pet_watchdog
+ * for avoiding apps watchdog bark while rebooting sequence
+ */
+#ifdef CONFIG_MACH_LGE
+extern void pet_watchdog(void);
+#endif
+
 void arm_machine_restart(char mode, const char *cmd)
 {
+#ifdef CONFIG_MACH_LGE
+	pet_watchdog();
+#endif
+
 	/* Flush the console to make sure all the relevant messages make it
 	 * out to the console drivers */
 	arm_machine_flush_console();
@@ -291,8 +303,14 @@ void machine_power_off(void)
 
 void machine_restart(char *cmd)
 {
+#ifdef CONFIG_MACH_LGE
+	preempt_disable();
+#endif
 	machine_shutdown();
 	arm_pm_restart(reboot_mode, cmd);
+#ifdef CONFIG_MACH_LGE
+	preempt_enable();
+#endif
 }
 
 /*
@@ -370,7 +388,16 @@ void __show_regs(struct pt_regs *regs)
 {
 	unsigned long flags;
 	char buf[64];
-
+#ifdef CONFIG_LGE_HANDLE_PANIC
+#ifdef CONFIG_CPU_CP15_MMU
+/* LGE_CHANGE 
+ * save cpu and mmu registers to support simulation when debugging
+ * taehung.kim@lge.com 2011-10-13
+ */
+	unsigned int c1,c2;
+#endif
+	set_crash_store_enable();
+#endif
 	printk("CPU: %d    %s  (%s %.*s)\n",
 		raw_smp_processor_id(), print_tainted(),
 		init_utsname()->release,
@@ -378,7 +405,11 @@ void __show_regs(struct pt_regs *regs)
 		init_utsname()->version);
 	print_symbol("PC is at %s\n", instruction_pointer(regs));
 	print_symbol("LR is at %s\n", regs->ARM_lr);
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	printk("pc : %08lx    lr : %08lx    psr : %08lx\n"
+#else /* Orignal */
 	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
+#endif
 	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
 		regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,
 		regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
@@ -392,6 +423,9 @@ void __show_regs(struct pt_regs *regs)
 		regs->ARM_r3, regs->ARM_r2,
 		regs->ARM_r1, regs->ARM_r0);
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	set_crash_store_disable();
+#endif
 	flags = regs->ARM_cpsr;
 	buf[0] = flags & PSR_N_BIT ? 'N' : 'n';
 	buf[1] = flags & PSR_Z_BIT ? 'Z' : 'z';
@@ -408,7 +442,6 @@ void __show_regs(struct pt_regs *regs)
 #ifdef CONFIG_CPU_CP15
 	{
 		unsigned int ctrl;
-
 		buf[0] = '\0';
 #ifdef CONFIG_CPU_CP15_MMU
 		{
@@ -418,11 +451,25 @@ void __show_regs(struct pt_regs *regs)
 			    : "=r" (transbase), "=r" (dac));
 			snprintf(buf, sizeof(buf), "  Table: %08x  DAC: %08x",
 			  	transbase, dac);
+#ifdef CONFIG_LGE_HANDLE_PANIC
+			/* LGE_CHANGE 
+ 			* save cpu and mmu registers to support simulation when debugging
+ 			* taehung.kim@lge.com 2011-10-13
+			*/
+			c1=transbase;
+			c2=dac;
+#endif
 		}
 #endif
 		asm("mrc p15, 0, %0, c1, c0\n" : "=r" (ctrl));
-
 		printk("Control: %08x%s\n", ctrl, buf);
+#if defined(CONFIG_CPU_CP15_MMU) && defined(CONFIG_LGE_HANDLE_PANIC)
+		/* LGE_CHANGE 
+ 		 * save cpu and mmu registers to support simulation when debugging
+ 		 * taehung.kim@lge.com 2011-10-13
+ 		 */
+		lge_save_ctx(regs,ctrl,c1,c2);
+#endif
 	}
 #endif
 

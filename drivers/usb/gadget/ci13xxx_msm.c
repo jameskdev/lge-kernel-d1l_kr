@@ -114,4 +114,8 @@ static int __init ci13xxx_msm_init(void)
 {
 	return platform_driver_register(&ci13xxx_msm_driver);
 }
+#ifdef CONFIG_LGE_PM
+device_initcall_sync(ci13xxx_msm_init);
+#else
 module_init(ci13xxx_msm_init);
+#endif

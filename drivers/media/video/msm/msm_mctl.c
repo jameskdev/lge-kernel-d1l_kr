@@ -717,6 +717,19 @@ static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 		(struct msm_camera_sensor_info *) s_ctrl->sensordata;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+#if 0
+	if (p_mctl->sync.actctrl.a_power_down)
+		p_mctl->sync.actctrl.a_power_down(
+			p_mctl->sync.sdata->actuator_info);
+
+	v4l2_subdev_call(p_mctl->sensor_sdev, core, s_power, 0);
+#else
+	v4l2_subdev_call(p_mctl->sensor_sdev, core, ioctl,
+		VIDIOC_MSM_SENSOR_RELEASE, NULL);
+#endif
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+
 	if (camdev->is_ispif) {
 		v4l2_subdev_call(p_mctl->ispif_sdev, core, ioctl,
 			VIDIOC_MSM_ISPIF_RELEASE, NULL);
@@ -741,11 +754,14 @@ static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 			VIDIOC_MSM_CSIPHY_RELEASE, NULL);
 	}
 
+#if 1 //QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
 	if (p_mctl->sync.actctrl.a_power_down)
 		p_mctl->sync.actctrl.a_power_down(
 			p_mctl->sync.sdata->actuator_info);
 
 	v4l2_subdev_call(p_mctl->sensor_sdev, core, s_power, 0);
+#endif
+
 	if (camdev->is_ispif) {
 		pm_qos_update_request(&p_mctl->pm_qos_req_list,
 				PM_QOS_DEFAULT_VALUE);

@@ -32,6 +32,11 @@
 #include <mach/subsystem_notif.h>
 #include <mach/subsystem_restart.h>
 
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+#include <mach/restart.h>
+#include <mach/board_lge.h>
+#endif
+
 #include "smd_private.h"
 
 struct subsys_soc_restart_order {
@@ -310,6 +315,10 @@ static int subsystem_restart_thread(void *data)
 	int i;
 	int restart_list_count = 0;
 
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	int subsys_magic_key = lge_get_magic_for_subsystem();
+#endif
+
 	if (r_work->coupled)
 		soc_restart_order = subsys->restart_order;
 
@@ -346,9 +355,13 @@ static int subsystem_restart_thread(void *data)
 	 * sequence for these subsystems. In the latter case, panic and bail
 	 * out, since a subsystem died in its powerup sequence.
 	 */
-	if (!mutex_trylock(powerup_lock))
+	if (!mutex_trylock(powerup_lock)) {
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		msm_set_restart_mode(subsys_magic_key|SUB_THD_F_PWR);
+#endif
 		panic("%s[%p]: Subsystem died during powerup!",
 						__func__, current);
+	}
 
 	do_epoch_check(subsys);
 
@@ -373,9 +386,13 @@ static int subsystem_restart_thread(void *data)
 		pr_info("[%p]: Shutting down %s\n", current,
 			restart_list[i]->name);
 
-		if (restart_list[i]->shutdown(subsys) < 0)
+		if (restart_list[i]->shutdown(subsys) < 0) {
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+			msm_set_restart_mode(subsys_magic_key|SUB_THD_F_SD);
+#endif
 			panic("subsys-restart: %s[%p]: Failed to shutdown %s!",
 				__func__, current, restart_list[i]->name);
+		}
 	}
 
 	_send_notification_to_order(restart_list, restart_list_count,
@@ -412,9 +429,13 @@ static int subsystem_restart_thread(void *data)
 		pr_info("[%p]: Powering up %s\n", current,
 					restart_list[i]->name);
 
-		if (restart_list[i]->powerup(subsys) < 0)
+		if (restart_list[i]->powerup(subsys) < 0) {
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+			msm_set_restart_mode(subsys_magic_key|SUB_THD_F_PWR);
+#endif
 			panic("%s[%p]: Failed to powerup %s!", __func__,
 				current, restart_list[i]->name);
+		}
 	}
 
 	_send_notification_to_order(restart_list,
@@ -440,6 +461,18 @@ int subsystem_restart(const char *subsys_name)
 	struct task_struct *tsk;
 	struct restart_thread_data *data = NULL;
 
+	//LGE_UPDATE_S : jaewonn.lee@lge.com 2012-4-12
+	//[Modem] Subsystem crash handler to kernel message
+	unsigned char* modem_crash_log;
+	int i;
+	int smem_size;
+	int size = 200;
+	//LGE_UPDATE_E : jaewonn.lee@lge.com 2012-4-12
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	u32 subsys_magic_key;;
+#endif
+
 	if (!subsys_name) {
 		pr_err("Invalid subsystem name.\n");
 		return -EINVAL;
@@ -447,6 +480,28 @@ int subsystem_restart(const char *subsys_name)
 
 	pr_info("Restart sequence requested for %s, restart_level = %d.\n",
 		subsys_name, restart_level);
+
+	//LGE_UPDATE_S : jaewonn.lee@lge.com 2012-4-12
+	//[Modem] Subsystem crash handler to kernel message
+	printk("-------Modem Crash Dump Message------------\n");
+	modem_crash_log = smem_get_entry(SMEM_ERR_CRASH_LOG, &smem_size);
+	if(!modem_crash_log){
+		printk("smem_get_entry failed.\n");
+	} else {
+		if (strncmp(modem_crash_log, "ERR", 3) != 0){
+			printk("modem_crash_log addr is not matched!!!\n");
+			printk("skip display modem err info.\n");
+		} else {
+			for(i=0; i<size; i++) {
+				if(readb(modem_crash_log+i)=='R' && readb(modem_crash_log+i+1)=='E' && readb(modem_crash_log+i+2)=='X')
+					break;
+				printk("%c",readb(modem_crash_log+i));
+			}
+		}
+	}
+	printk("-------Modem Crash Dump Message------------\n");
+	//LGE_UPDATE_E : jaewonn.lee@lge.com 2012-4-12
+
 
 	/* List of subsystems is protected by a lock. New subsystems can
 	 * still come in.
@@ -457,7 +512,9 @@ int subsystem_restart(const char *subsys_name)
 		pr_warn("Unregistered subsystem %s!\n", subsys_name);
 		return -EINVAL;
 	}
-
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	lge_set_magic_for_subsystem(subsys_name);
+#endif
 	if (restart_level != RESET_SOC) {
 		data = kzalloc(sizeof(struct restart_thread_data), GFP_KERNEL);
 		if (!data) {
@@ -473,7 +530,9 @@ int subsystem_restart(const char *subsys_name)
 			data->subsys = subsys;
 		}
 	}
-
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	subsys_magic_key = lge_get_magic_for_subsystem();
+#endif
 	switch (restart_level) {
 
 	case RESET_SUBSYS_COUPLED:
@@ -490,18 +549,28 @@ int subsystem_restart(const char *subsys_name)
 		 */
 		tsk = kthread_run(subsystem_restart_thread, data,
 				"subsystem_restart_thread");
-		if (IS_ERR(tsk))
+		if (IS_ERR(tsk)) {
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+			msm_set_restart_mode(subsys_magic_key|SUB_UNAB_THD);
+#endif
 			panic("%s: Unable to create thread to restart %s",
 				__func__, subsys->name);
+		}
 
 		break;
 
 	case RESET_SOC:
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		msm_set_restart_mode(subsys_magic_key|SUB_RESET_SOC);
+#endif
 		panic("subsys-restart: Resetting the SoC - %s crashed.",
 			subsys->name);
 		break;
 
 	default:
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		msm_set_restart_mode(SUB_UNKNOWN);
+#endif
 		panic("subsys-restart: Unknown restart level!\n");
 	break;
 

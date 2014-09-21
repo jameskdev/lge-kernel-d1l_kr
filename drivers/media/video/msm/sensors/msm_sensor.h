@@ -130,6 +130,17 @@ struct msm_sensor_fn_t {
 	int (*sensor_power_down)
 		(struct msm_sensor_ctrl_t *);
 	int (*sensor_power_up) (struct msm_sensor_ctrl_t *);
+	//Start :randy@qualcomm.com for calibration 2012.03.25
+	int (*sensor_get_eeprom_data) (struct msm_sensor_ctrl_t *,
+		struct sensor_cfg_data *);
+	//End :randy@qualcomm.com for calibration 2012.03.25
+/* LGE_CHANGE_S, Implementation of SoC Sensor features for v4l2 system, 2012.02.02, yongjin1.kim@lge.com */
+#ifdef CONFIG_MACH_LGE
+	int32_t (*sensor_set_wb) (struct msm_sensor_ctrl_t *, uint8_t);
+	int32_t (*sensor_set_effect) (struct msm_sensor_ctrl_t *, uint8_t);
+	int32_t (*sensor_set_brightness) (struct msm_sensor_ctrl_t *, uint8_t);
+#endif
+/* LGE_CHANGE_E, Implementation of SoC Sensor features for v4l2 system, 2012.02.02, yongjin1.kim@lge.com */
 };
 
 struct msm_sensor_ctrl_t {
@@ -235,5 +246,10 @@ struct msm_sensor_ctrl_t *get_sctrl(struct v4l2_subdev *sd);
 
 #define VIDIOC_MSM_SENSOR_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 10, void __user *)
+
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
+#define VIDIOC_MSM_SENSOR_RELEASE \
+	_IO('V', BASE_VIDIOC_PRIVATE + 11)
+//QCT patch, Change_sensor_powerdown_seq, 2012-05-03, freeso.kim
 
 #endif
