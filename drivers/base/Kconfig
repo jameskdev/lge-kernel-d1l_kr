@@ -168,15 +168,6 @@ config SYS_HYPERVISOR
 	bool
 	default n
 
-config SYNC
-	bool "Synchronization framework"
-	default n
-	select ANON_INODES
-	help
-	  This option enables the framework for synchronization between multiple
-	  drivers.  Sync implementations can take advantage of hardware
-	  synchronization built into devices like GPUs.
-
 config GENLOCK
 	bool "Enable a generic cross-process locking mechanism"
 	depends on ANON_INODES
@@ -190,4 +181,13 @@ config GENLOCK_MISCDEVICE
 	help
 	  Create a miscdevice for the purposes of allowing userspace to create
 	  and interact with locks created using genlock.
+
+config SYNC
+	bool "Synchronization framework"
+	default n
+	select ANON_INODES
+	help
+	  This option enables the framework for synchronization between multiple
+	  drivers.  Sync implementations can take advantage of hardware
+	  synchronization built into devices like GPUs.
 endmenu
