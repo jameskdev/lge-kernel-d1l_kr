@@ -421,7 +421,6 @@ void vidc_cleanup_addr_table(struct video_client_ctx *client_ctx,
 					client_ctx->h264_mv_ion_handle);
 			client_ctx->h264_mv_ion_handle = NULL;
 		}
-
 	}
 bail_out_cleanup:
 	return;

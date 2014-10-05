@@ -905,7 +905,7 @@ ion_error:
 	if (!IS_ERR_OR_NULL(client_ctx->h264_mv_ion_handle)) {
 		ion_free(client_ctx->user_ion_client,
 			client_ctx->h264_mv_ion_handle);
-		client_ctx->h264_mv_ion_handle = NULL;
+		 client_ctx->h264_mv_ion_handle = NULL;
 	}
 	return false;
 }
@@ -979,7 +979,7 @@ static u32 vid_dec_free_h264_mv_buffers(struct video_client_ctx *client_ctx)
 					client_ctx->h264_mv_ion_handle);
 		ion_free(client_ctx->user_ion_client,
 					client_ctx->h264_mv_ion_handle);
-		client_ctx->h264_mv_ion_handle =NULL;
+		 client_ctx->h264_mv_ion_handle = NULL;
 	}
 
 	if (vcd_status)
