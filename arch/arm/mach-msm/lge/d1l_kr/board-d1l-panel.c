@@ -233,6 +233,7 @@ static void mipi_dsi_panel_pwm_cfg(void)
 
 static bool dsi_power_on;
 
+static char mipi_dsi_splash_is_enabled(void);
 #if defined(CONFIG_MACH_MSM8960_D1LSK) || defined(CONFIG_MACH_MSM8960_D1LKT) || defined(CONFIG_MACH_MSM8960_D1LU)
 static int mipi_dsi_panel_power(int on)
 {
@@ -561,6 +562,7 @@ static int mipi_dsi_panel_power(int on)
 static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_VSYNC_GPIO,
 	.dsi_power_save = mipi_dsi_panel_power,
+	.splash_is_enabled = mipi_dsi_splash_is_enabled,
 };
 
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -778,6 +780,11 @@ void __init msm8960_mdp_writeback(struct memtype_reserve* reserve_table)
 	reserve_table[mdp_pdata.mem_hid].size +=
 		mdp_pdata.ov1_wb_size;
 #endif
+}
+
+static char mipi_dsi_splash_is_enabled(void)
+{
+	return mdp_pdata.cont_splash_enabled;
 }
 
 #if defined(CONFIG_LGE_BACKLIGHT_LM3533)
@@ -1645,11 +1652,21 @@ void __init msm8960_allocate_fb_region(void)
 
 void __init msm8960_set_display_params(char *prim_panel, char *ext_panel)
 {
+	int disable_splash = 0;
 	if (strnlen(prim_panel, PANEL_NAME_MAX_LEN)) {
 		strlcpy(msm_fb_pdata.prim_panel_name, prim_panel,
 			PANEL_NAME_MAX_LEN);
 		pr_debug("msm_fb_pdata.prim_panel_name %s\n",
 			msm_fb_pdata.prim_panel_name);
+
+		if (strncmp((char *)msm_fb_pdata.prim_panel_name,
+			MIPI_VIDEO_TOSHIBA_WSVGA_PANEL_NAME,
+			strnlen(MIPI_VIDEO_TOSHIBA_WSVGA_PANEL_NAME,
+				PANEL_NAME_MAX_LEN))) {
+			/* Disable splash for panels other than Toshiba WSVGA */
+			disable_splash = 1;
+		}
+
 		if (!strncmp((char *)msm_fb_pdata.prim_panel_name,
 			HDMI_PANEL_NAME, strnlen(HDMI_PANEL_NAME,
 				PANEL_NAME_MAX_LEN))) {
@@ -1664,6 +1681,9 @@ void __init msm8960_set_display_params(char *prim_panel, char *ext_panel)
 		pr_debug("msm_fb_pdata.ext_panel_name %s\n",
 			msm_fb_pdata.ext_panel_name);
 	}
+
+	if (disable_splash)
+		mdp_pdata.cont_splash_enabled = 0;
 }
 
 #ifdef CONFIG_I2C
