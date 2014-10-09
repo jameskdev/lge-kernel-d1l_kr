@@ -3005,13 +3005,12 @@ int mdp4_overlay_play_wait(struct fb_info *info, struct msmfb_overlay_data *req)
 		return -EPERM;
 
 	pipe = mdp4_overlay_ndx2pipe(req->id);
-#ifdef CONFIG_MACH_LGE
-/* QCT Patch : Prevent kernel Crash (mdp4_overlay1_done_dtv()) */
+
 	if (!pipe) {
 		mdp4_stat.err_play++;
 		return -ENODEV;
 	}
-#endif
+
 	if (mutex_lock_interruptible(&mfd->dma->ov_mutex))
 		return -EINTR;
 
