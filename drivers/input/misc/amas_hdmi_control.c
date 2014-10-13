@@ -26,7 +26,6 @@
 #include "amas_hdmi_control.h"
 
 #include <mach/msm_hdmi_audio.h>
-#include "mach/msm_fb.h"
 #include "mach/amas_hdmi.h"
 
 
