@@ -33,6 +33,8 @@
 
 #define DTV_BASE	0xD0000
 
+static int dtv_enabled;
+
 /*#define DEBUG*/
 #ifdef DEBUG
 static void __mdp_outp(uint32 port, uint32 value)
