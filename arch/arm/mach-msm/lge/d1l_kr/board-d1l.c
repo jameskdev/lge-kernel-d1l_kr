@@ -157,13 +157,20 @@ struct sx150x_platform_data msm8960_sx150x_data[] = {
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 #define MSM_PMEM_KERNEL_EBI1_SIZE 0x280000
-#define MSM_ION_SF_SIZE		0x3E00000 /* (62MB) */// Original MSM_PMEM_SIZE /* (40MB) */ 
+#ifdef CONFIG_MSM_IOMMU
+#define MSM_ION_MM_SIZE            0x3800000
+#define MSM_ION_SF_SIZE            0x0
+#define MSM_ION_HEAP_NUM	7
+#else
+#define MSM_ION_MM_SIZE            MSM_PMEM_ADSP_SIZE
+#define MSM_ION_SF_SIZE            MSM_PMEM_SIZE
+#define MSM_ION_HEAP_NUM	8
+#endif
 #define MSM_ION_MM_FW_SIZE	0x200000 /* (2MB) */
-#define MSM_ION_MM_SIZE		0x9C00000 /*(156MB)(168MB)(144MB)(120MB)*/ //Original MSM_PMEM_ADSP_SIZE  /* LGE_CHANGE, Camera Zero shutter lag patch, 2012.01.12 jungryoul.choi@lge.com */
 #define MSM_ION_QSECOM_SIZE	0x600000 /* (6MB) */
 #define MSM_ION_MFC_SIZE	SZ_8K
 #define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
-#define MSM_ION_HEAP_NUM	8
+
 #define MSM_LIQUID_ION_MM_SIZE (MSM_ION_MM_SIZE + 0x600000)
 /* QCT Original - NOT USED */
 #if !defined(CONFIG_MACH_LGE)
@@ -451,6 +458,7 @@ static struct ion_platform_data ion_pdata = {
 			.memory_type = ION_EBI_TYPE,
 			.extra_data = (void *) &cp_mfc_ion_pdata,
 		},
+#ifndef CONFIG_MSM_IOMMU
 		{
 			.id	= ION_SF_HEAP_ID,
 			.type	= ION_HEAP_TYPE_CARVEOUT,
@@ -459,6 +467,7 @@ static struct ion_platform_data ion_pdata = {
 			.memory_type = ION_EBI_TYPE,
 			.extra_data = (void *) &co_ion_pdata,
 		},
+#endif
 		{
 			.id	= ION_IOMMU_HEAP_ID,
 			.type	= ION_HEAP_TYPE_IOMMU,
