@@ -281,10 +281,15 @@ void mdp4_dsi_video_vsync_ctrl(int cndx, int enable)
 
 	vctrl->vsync_irq_enabled = enable;
 
-	if (enable)
+	if (enable) {
+#ifdef CONFIG_MACH_LGE
+		if (!dsi_video_enabled)
+			mdp4_overlay_dsi_video_start();
+#endif
 		vsync_irq_enable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
-	else
+	} else {
 		vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
+	}
 }
 
 void mdp4_dsi_video_wait4vsync(int cndx, long long *vtime)

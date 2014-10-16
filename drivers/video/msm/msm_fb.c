@@ -840,20 +840,30 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 {
 	struct msm_fb_panel_data *pdata;
 	__u32 temp = bkl_lvl;
+#ifdef CONFIG_MACH_LGE
+	down(&mfd->sem);
+#endif
 	if (!mfd->panel_power_on || !bl_updated) {
 		unset_bl_level = bkl_lvl;
 #ifdef CONFIG_MACH_LGE
-		/* LGE_CHANGE
-		 * Only when booting state,
-		 * it turns on backlight right after showing booting logo image
-		 * 2012-01-13, baryun.hwang@lge.com
-		 */
-		if (system_state != SYSTEM_BOOTING)
-#endif
+		/*           
+                             
+                                                                 
+                                     
+   */
+		if (system_state != SYSTEM_BOOTING) {
+			up(&mfd->sem);
 			return;
+		}
+#else
+		return;
+#endif
 	} else {
 		unset_bl_level = 0;
 	}
+#ifdef CONFIG_MACH_LGE
+	up(&mfd->sem);
+#endif
 
 	msm_fb_scale_bl(&temp);
 	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
@@ -1833,8 +1843,8 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 			mfd->bl_level = unset_bl_level;
 			pdata->set_backlight(mfd);
 			bl_level_old = unset_bl_level;
-			up(&mfd->sem);
 			bl_updated = 1;
+			up(&mfd->sem);
 		}
 	}
 
@@ -3011,8 +3021,8 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 			mfd->bl_level = unset_bl_level;
 			pdata->set_backlight(mfd);
 			bl_level_old = unset_bl_level;
-			up(&mfd->sem);
 			bl_updated = 1;
+			up(&mfd->sem);
 		}
 	}
 
