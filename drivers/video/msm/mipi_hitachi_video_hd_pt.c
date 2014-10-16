@@ -102,8 +102,6 @@ static int __init mipi_video_hitachi_hd_pt_init(void)
 	pinfo.lcdc.v_pulse_width = 1;
 #endif
 
-
-
 	pinfo.lcdc.border_clr = 0;	/* blk */
 	pinfo.lcdc.underflow_clr = 0xff;	/* blue */
 	pinfo.lcdc.hsync_skew = 0;
@@ -137,8 +135,7 @@ static int __init mipi_video_hitachi_hd_pt_init(void)
 	pinfo.clk_rate = 482180000;
 	pinfo.mipi.frame_rate = 60;
 #endif
-
-
+	pinfo.mipi.esc_byte_ratio = 4;
 
 
 	pinfo.mipi.stream = 0; /* dma_p */
