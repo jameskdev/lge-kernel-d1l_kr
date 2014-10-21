@@ -4465,8 +4465,6 @@ static int hdmi_msm_probe_thread(void *arg)
 #endif
 	}
 
-	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
-
 	/* Initialize hdmi node and register with switch driver */
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
 	external_common_state->sdev.name = "hdmi_as_primary";
