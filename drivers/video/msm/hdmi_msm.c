@@ -4278,14 +4278,6 @@ static void hdmi_msm_hpd_off(void)
 
 	hdmi_msm_set_mode(FALSE);
 	hdmi_msm_state->hpd_initialized = FALSE;
-#ifdef CONFIG_MACH_LGE
-	/* LGE_CHANGE
-	 * patch from QCT.
-	 * Add code for crash in hdmi_pll_enable()
-	 * 2010-03-15, soodong.kim@lge.com
-	 */
-	hdmi_msm_powerdown_phy();
-#endif
 	hdmi_msm_state->pd->cec_power(0);
 	hdmi_msm_state->pd->enable_5v(0);
 	hdmi_msm_state->pd->core_power(0, 1);
@@ -4384,16 +4376,6 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	DEV_INFO("power: ON (%dx%d %d)\n", mfd->var_xres, mfd->var_yres,
 		mfd->var_pixclock);
 
-#ifdef CONFIG_MACH_LGE
-        /* LGE_CHANGE
-         * patch from QCT.
-         * Add code for crash in hdmi_pll_enable()
-         * 2010-03-15, soodong.kim@lge.com
-         */
-	if (device_suspended)
-		hdmi_msm_hpd_on(true);
-#endif
-
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	mutex_lock(&hdmi_msm_state_mutex);
 	if (hdmi_msm_state->hdcp_activating) {
@@ -4474,17 +4456,7 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	hdmi_msm_powerdown_phy();
 	hdmi_msm_dump_regs("HDMI-OFF: ");
 
-#ifdef CONFIG_MACH_LGE
-        /* LGE_CHANGE
-         * patch from QCT.
-         * Add code for crash in hdmi_pll_enable()
-         * 2010-03-15, soodong.kim@lge.com
-         */
-	if (!device_suspended)
-		hdmi_msm_hpd_on(true);
-#else /* QCT original */
 	hdmi_msm_hpd_on(true);
-#endif
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (!external_common_state->hpd_feature_on || mfd->ref_cnt)

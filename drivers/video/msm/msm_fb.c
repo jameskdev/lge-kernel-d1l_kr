@@ -80,15 +80,6 @@ static unsigned char *fbram_phys;
 static int fbram_size;
 static boolean bf_supported;
 
-#ifdef CONFIG_MACH_LGE
-/* LGE_CHANGE
- * patch from QCT.
- * Add code for crash in hdmi_pll_enable()
- * 2010-03-15, soodong.kim@lge.com
- */
-bool device_suspended = FALSE;
-#endif
-
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
 
@@ -695,19 +686,7 @@ static int msm_fb_ext_suspend(struct device *dev)
 
 	if (mfd->panel_info.type == HDMI_PANEL ||
 		mfd->panel_info.type == DTV_PANEL)
-#ifdef CONFIG_MACH_LGE
-        /* LGE_CHANGE
-         * patch from QCT.
-         * Add code for crash in hdmi_pll_enable()
-         * 2010-03-15, soodong.kim@lge.com
-         */
-	{
-		device_suspended = TRUE;
-		ret = msm_fb_suspend_sub(mfd);
-	}
-#else /* QCT original */
                 ret = msm_fb_suspend_sub(mfd);
-#endif
 	return ret;
 }
 
@@ -721,19 +700,7 @@ static int msm_fb_ext_resume(struct device *dev)
 
 	if (mfd->panel_info.type == HDMI_PANEL ||
 		mfd->panel_info.type == DTV_PANEL)
-#ifdef CONFIG_MACH_LGE
-        /* LGE_CHANGE
-         * patch from QCT.
-         * Add code for crash in hdmi_pll_enable()
-         * 2010-03-15, soodong.kim@lge.com
-         */
-	{
-		device_suspended = FALSE;
-		ret = msm_fb_resume_sub(mfd);
-	}
-#else /* QCT original */
                 ret = msm_fb_suspend_sub(mfd);
-#endif
 	return ret;
 }
 #endif

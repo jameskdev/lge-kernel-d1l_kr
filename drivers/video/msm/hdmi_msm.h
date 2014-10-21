@@ -118,15 +118,6 @@ struct hdmi_msm_state_type {
 
 extern struct hdmi_msm_state_type *hdmi_msm_state;
 
-#ifdef CONFIG_MACH_LGE
-/* LGE_CHANGE
- * patch from QCT.
- * Add code for crash in hdmi_pll_enable()
- * 2010-03-15, soodong.kim@lge.com
- */
-extern bool device_suspended;
-#endif
-
 uint32 hdmi_msm_get_io_base(void);
 
 #ifdef CONFIG_FB_MSM_HDMI_COMMON

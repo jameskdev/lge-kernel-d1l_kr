@@ -97,12 +97,6 @@ int hdmi_pll_enable(void)
 {
 	unsigned int val;
 	u32 ahb_en_reg, ahb_enabled;
-#ifdef CONFIG_MACH_LGE
-	/* LGE_CHANGE
-	 * patch from QCT.
-	 * Add code for crash in hdmi_pll_enable() */
-	int i = 0;
-#endif
 
 	ahb_en_reg = readl_relaxed(AHB_EN_REG);
 	ahb_enabled = ahb_en_reg & BIT(4);
@@ -141,19 +135,8 @@ int hdmi_pll_enable(void)
 	writel_relaxed(val, HDMI_PHY_PLL_PWRDN_B);
 	writel_relaxed(0x80, HDMI_PHY_REG_2);
 
-#ifdef CONFIG_MACH_LGE
-	/* LGE_CHANGE
-	 * patch from QCT.
-	 * Add code for crash in hdmi_pll_enable() */
-	while (!(readl_relaxed(HDMI_PHY_PLL_STATUS0) & BIT(0)) && ++i < 1000) {
-		mdelay(1);
-	}
-	if(i >= 1000)
-		return -1;
-#else
 	while (!(readl_relaxed(HDMI_PHY_PLL_STATUS0) & BIT(0)))
 		cpu_relax();
-#endif
 
 	if (!ahb_enabled)
 		writel_relaxed(ahb_en_reg & ~BIT(4), AHB_EN_REG);
