@@ -4446,6 +4446,8 @@ static int hdmi_msm_probe_thread(void *arg)
 {
        if (hdmi_prim_display) {
                rc = hdmi_msm_hpd_on(true);
+		if (rc)
+			goto error;
        }
 
 	if (hdmi_msm_has_hdcp()) {
@@ -4475,6 +4477,29 @@ static int hdmi_msm_probe_thread(void *arg)
 		DEV_ERR("Hdmi switch registration failed\n");
 
 	return 0;
+error:
+	if (hdmi_msm_state->qfprom_io)
+		iounmap(hdmi_msm_state->qfprom_io);
+	hdmi_msm_state->qfprom_io = NULL;
+
+	if (hdmi_msm_state->hdmi_io)
+		iounmap(hdmi_msm_state->hdmi_io);
+	hdmi_msm_state->hdmi_io = NULL;
+
+	external_common_state_remove();
+
+	if (hdmi_msm_state->hdmi_app_clk)
+		clk_put(hdmi_msm_state->hdmi_app_clk);
+	if (hdmi_msm_state->hdmi_m_pclk)
+		clk_put(hdmi_msm_state->hdmi_m_pclk);
+	if (hdmi_msm_state->hdmi_s_pclk)
+		clk_put(hdmi_msm_state->hdmi_s_pclk);
+
+	hdmi_msm_state->hdmi_app_clk = NULL;
+	hdmi_msm_state->hdmi_m_pclk = NULL;
+	hdmi_msm_state->hdmi_s_pclk = NULL;
+
+	return rc;
 }
 #endif /* CONFIG_MACH_LGE && LGE_MULTICORE_FASTBOOT */
 /* LGE_CHANGE_E */
