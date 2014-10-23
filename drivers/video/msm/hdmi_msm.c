@@ -857,9 +857,6 @@ static void hdmi_msm_send_event(boolean on)
 static void hdmi_msm_hpd_state_work(struct work_struct *work)
 {
 	boolean hpd_state;
-#ifdef CONFIG_SII8334_MHL_TX
-	static int hpd_off_count=0;
-#endif
 
 	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized ||
 		!MSM_HDMI_BASE) {
@@ -4461,7 +4458,7 @@ static int hdmi_msm_probe_thread(void *arg)
 	int rc = 0; 
 	
 	if (hdmi_prim_display) {
-		rc = hdmi_msm_hpd_on(true);
+		rc = hdmi_msm_hpd_on();
 		if (rc)
 			goto error;
 	}
