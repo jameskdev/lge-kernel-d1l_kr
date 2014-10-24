@@ -136,7 +136,6 @@ static void hdmi_msm_dump_regs(const char *prefix);
 extern int GetMHLConnectedStatus(void);
 #endif
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_enable(void);
 static void hdmi_msm_turn_on(void);
 static int hdmi_msm_audio_off(void);
@@ -2236,7 +2235,6 @@ static int hdmi_msm_count_one(uint8 *array, uint8 len)
 	return count;
 }
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdcp_deauthenticate(void)
 {
 	int hdcp_link_status = HDMI_INP(0x011C);
@@ -2367,7 +2365,6 @@ static void check_and_clear_HDCP_DDC_Failure(void)
 	DEV_DBG("%s: On Exit: HDCP_DDC_STATUS = 0x%x, FAILURE = %d,"
 		"NACK0 = %d\n", __func__ , hdcp_ddc_status, failure, nack0);
 }
-#endif
 
 
 static int hdcp_authentication_part1(void)
@@ -4635,22 +4632,7 @@ static int hdmi_msm_probe_thread(void *arg)
 			goto error;
 	}
 
-	if (hdmi_msm_has_hdcp()) {
-		/* Don't Set Encryption in case of non HDCP builds */
-		external_common_state->present_hdcp = FALSE;
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
-		external_common_state->present_hdcp = TRUE;
-#endif
-	} else {
-		external_common_state->present_hdcp = FALSE;
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
-		/*
-		 * If the device is not hdcp capable do
-		 * not start hdcp timer.
-		 */
-		del_timer(&hdmi_msm_state->hdcp_timer);
-#endif
-	}
+	hdmi_msm_config_hdcp_feature();
 
 	/* Initialize hdmi node and register with switch driver */
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
@@ -4658,9 +4640,19 @@ static int hdmi_msm_probe_thread(void *arg)
 #else
 	external_common_state->sdev.name = "hdmi";
 #endif
-	if (switch_dev_register(&external_common_state->sdev) < 0)
+	if (switch_dev_register(&external_common_state->sdev) < 0) {
 		DEV_ERR("Hdmi switch registration failed\n");
+		rc = -ENODEV;
+		goto error;
+	}
 
+	external_common_state->audio_sdev.name = "hdmi_audio";
+	if (switch_dev_register(&external_common_state->audio_sdev) < 0) {
+		DEV_ERR("Hdmi audio switch registration failed\n");
+		switch_dev_unregister(&external_common_state->sdev);
+		rc = -ENODEV;
+		goto error;
+	}
 	return 0;
 error:
 	if (hdmi_msm_state->qfprom_io)
