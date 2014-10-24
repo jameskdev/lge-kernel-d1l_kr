@@ -3735,11 +3735,11 @@ static void hdmi_msm_audio_setup(void)
 
 static int hdmi_msm_audio_off(void)
 {
+	uint32 audio_cfg;
+	int i, timeout_val = 50;
 #ifdef CONFIG_LGE_COMPRESSED_PATH
 	msm_hdmi_audio_enble_flag=0;	//keyman
 #endif
-	uint32 audio_cfg;
-	int i, timeout_val = 50;
 
 	for (i = 0; (i < timeout_val) &&
 		((audio_cfg = HDMI_INP_ND(0x01D0)) & BIT(0)); i++) {
@@ -4612,6 +4612,31 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	return 0;
 }
 
+void hdmi_msm_config_hdcp_feature(void)
+{
+	if (hdcp_feature_on && hdmi_msm_has_hdcp()) {
+		init_timer(&hdmi_msm_state->hdcp_timer);
+		hdmi_msm_state->hdcp_timer.function = hdmi_msm_hdcp_timer;
+		hdmi_msm_state->hdcp_timer.data = (uint32)NULL;
+		hdmi_msm_state->hdcp_timer.expires = 0xffffffffL;
+
+/* LGE : Solve dtv_off called during HDCP authentification*/
+#ifdef CONFIG_MACH_LGE
+		init_completion(&hdmi_msm_state->hdcp_activation_done);
+#endif
+		init_completion(&hdmi_msm_state->hdcp_success_done);
+		INIT_WORK(&hdmi_msm_state->hdcp_reauth_work,
+				hdmi_msm_hdcp_reauth_work);
+		INIT_WORK(&hdmi_msm_state->hdcp_work, hdmi_msm_hdcp_work);
+		hdmi_msm_state->hdcp_enable = TRUE;
+	} else {
+		del_timer(&hdmi_msm_state->hdcp_timer);
+		hdmi_msm_state->hdcp_enable = FALSE;
+	}
+	external_common_state->present_hdcp = hdmi_msm_state->hdcp_enable;
+	DEV_INFO("%s: HDCP Feature: %s\n", __func__,
+			hdmi_msm_state->hdcp_enable ? "Enabled" : "Disabled");
+}
 
 /* LGE_CHANGE_S
  * 
@@ -4680,32 +4705,6 @@ error:
 }
 #endif /* CONFIG_MACH_LGE && LGE_MULTICORE_FASTBOOT */
 /* LGE_CHANGE_E */
-
-void hdmi_msm_config_hdcp_feature(void)
-{
-	if (hdcp_feature_on && hdmi_msm_has_hdcp()) {
-		init_timer(&hdmi_msm_state->hdcp_timer);
-		hdmi_msm_state->hdcp_timer.function = hdmi_msm_hdcp_timer;
-		hdmi_msm_state->hdcp_timer.data = (uint32)NULL;
-		hdmi_msm_state->hdcp_timer.expires = 0xffffffffL;
-
-/* LGE : Solve dtv_off called during HDCP authentification*/
-#ifdef CONFIG_MACH_LGE
-		init_completion(&hdmi_msm_state->hdcp_activation_done);
-#endif
-		init_completion(&hdmi_msm_state->hdcp_success_done);
-		INIT_WORK(&hdmi_msm_state->hdcp_reauth_work,
-				hdmi_msm_hdcp_reauth_work);
-		INIT_WORK(&hdmi_msm_state->hdcp_work, hdmi_msm_hdcp_work);
-		hdmi_msm_state->hdcp_enable = TRUE;
-	} else {
-		del_timer(&hdmi_msm_state->hdcp_timer);
-		hdmi_msm_state->hdcp_enable = FALSE;
-	}
-	external_common_state->present_hdcp = hdmi_msm_state->hdcp_enable;
-	DEV_INFO("%s: HDCP Feature: %s\n", __func__,
-			hdmi_msm_state->hdcp_enable ? "Enabled" : "Disabled");
-}
 
 static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 {
