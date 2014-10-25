@@ -2618,6 +2618,9 @@ static int mdp_probe(struct platform_device *pdev)
 	case MIPI_VIDEO_PANEL:
 #ifndef CONFIG_FB_MSM_MDP303
 		mipi = &mfd->panel_info.mipi;
+#ifdef CONFIG_MACH_LGE
+		mdp4_dsi_vsync_init(0);
+#endif
 		mfd->vsync_init = mdp4_dsi_vsync_init;
 		mfd->vsync_show = mdp4_dsi_video_show_event;
 		mfd->hw_refresh = TRUE;
