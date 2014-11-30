@@ -418,10 +418,18 @@ static void mdp4_dsi_video_wait4ov(int cndx)
 	if (ret < 0) {
 		pr_err("%s wait for completion error %x",
 			__func__, ret);
+#ifdef CONFIG_MACH_LGE
+		mdp4_dsi_video_blt_stop(vctrl->mfd);
+		mdp4_dsi_video_blt_start(vctrl->mfd);
+#endif
 		return;
 	} else if (!ret) {
 		pr_err("%s wait for commit_comp timeout",
 			__func__);
+#ifdef CONFIG_MACH_LGE
+		mdp4_dsi_video_blt_stop(vctrl->mfd);
+		mdp4_dsi_video_blt_start(vctrl->mfd);
+#endif
 		wait_for_completion(&vctrl->ov_comp);
 	}
 
