@@ -271,6 +271,7 @@ int mdp4_dsi_video_pipe_commit(int cndx, int wait)
 	return cnt;
 }
 
+#ifndef CONFIG_MACH_LGE
 static void mdp4_video_vsync_irq_ctrl(int cndx, int enable)
 {
 	struct vsycn_ctrl *vctrl;
@@ -295,6 +296,7 @@ static void mdp4_video_vsync_irq_ctrl(int cndx, int enable)
 	pr_debug("%s: enable=%d cnt=%d\n", __func__, enable, vsync_irq_cnt);
 	mutex_unlock(&vctrl->update_lock);
 }
+#endif
 
 void mdp4_dsi_video_vsync_ctrl(struct fb_info *info, int enable)
 {
@@ -310,7 +312,17 @@ void mdp4_dsi_video_vsync_ctrl(struct fb_info *info, int enable)
 
 	vctrl->vsync_irq_enabled = enable;
 
+#ifdef CONFIG_MACH_LGE
+	if (enable) {
+		if (!dsi_video_enabled)
+			mdp4_overlay_dsi_video_start();
+		vsync_irq_enable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
+	} else {
+		vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
+	}
+#else
 	mdp4_video_vsync_irq_ctrl(cndx, enable);
+#endif
 
 	if (vctrl->vsync_irq_enabled &&  atomic_read(&vctrl->suspend) == 0)
 		atomic_set(&vctrl->vsync_resume, 1);
@@ -333,7 +345,9 @@ void mdp4_dsi_video_wait4vsync(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
+#ifndef CONFIG_MACH_LGE
 	mdp4_video_vsync_irq_ctrl(cndx, 1);
+#endif
 
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (vctrl->wait_vsync_cnt == 0)
@@ -343,7 +357,9 @@ void mdp4_dsi_video_wait4vsync(int cndx)
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 
 	wait_for_completion(&vctrl->vsync_comp);
+#ifndef CONFIG_MACH_LGE
 	mdp4_video_vsync_irq_ctrl(cndx, 0);
+#endif
 	mdp4_stat.wait4vsync0++;
 }
 
