@@ -450,9 +450,7 @@ ssize_t mdp4_dsi_video_show_event(struct device *dev,
 	if (atomic_read(&vctrl->suspend) > 0 ||
 		atomic_read(&vctrl->vsync_resume) == 0)
 		return 0;
-#ifdef CONFIG_MACH_LGE
-if(dsi_video_enabled) {
-#endif
+
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (vctrl->wait_vsync_cnt == 0)
 		INIT_COMPLETION(vctrl->vsync_comp);
@@ -461,23 +459,12 @@ if(dsi_video_enabled) {
 	ret = wait_for_completion_interruptible_timeout(&vctrl->vsync_comp,
 		msecs_to_jiffies(VSYNC_PERIOD * 4));
 	if (ret <= 0) {
-#ifdef CONFIG_MACH_LGE
-		vctrl->wait_vsync_cnt = 0;
-		return -EBUSY;
-#else
 		vctrl->wait_vsync_cnt = 0;
 		vsync_tick = ktime_to_ns(ktime_get());
 		ret = snprintf(buf, PAGE_SIZE, "VSYNC=%llu", vsync_tick);
 		buf[strlen(buf) + 1] = '\0';
 		return ret;
-#endif
 	}
-#ifdef CONFIG_MACH_LGE
-} else {
-	usleep(17000);
-	vctrl->vsync_time = ktime_get();
-}
-#endif
 
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	vsync_tick = ktime_to_ns(vctrl->vsync_time);
