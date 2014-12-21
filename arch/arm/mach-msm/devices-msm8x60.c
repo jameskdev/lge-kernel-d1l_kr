@@ -2255,8 +2255,7 @@ struct msm_vidc_platform_data vidc_platform_data = {
 	.enable_ion = 0,
 #endif
 	.disable_dmx = 0,
-	.disable_fullhd = 0,
-	.disable_turbo = 1
+	.disable_fullhd = 0
 };
 
 struct platform_device msm_device_vidc = {
